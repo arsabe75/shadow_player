@@ -1,0 +1,57 @@
+import sys
+import os
+import ctypes
+
+# Pre-load MPV DLL before any Qt imports to avoid conflicts
+# Check settings first using a minimal JSON read
+def _preload_mpv_if_needed():
+    import json
+    try:
+        with open("user_data.json", "r") as f:
+            data = json.load(f)
+            if data.get("player_engine") == "mpv":
+                mpv_path = os.path.abspath("mpv")
+                if os.path.exists(mpv_path):
+                    os.environ["PATH"] = mpv_path + os.pathsep + os.environ["PATH"]
+                    for dll_name in ["libmpv-2.dll", "mpv-1.dll", "mpv-2.dll"]:
+                        dll_path = os.path.join(mpv_path, dll_name)
+                        if os.path.exists(dll_path):
+                            ctypes.CDLL(dll_path)
+                            break
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+
+_preload_mpv_if_needed()
+
+from PySide6.QtWidgets import QApplication
+from adapters.player.qt_player import QtPlayer
+from adapters.persistence.json_adapter import JsonPersistenceAdapter
+from app.services import VideoService
+from adapters.ui.main_window import MainWindow
+
+def main():
+    app = QApplication(sys.argv)
+
+    # Composition Root
+    persistence_adapter = JsonPersistenceAdapter()
+    
+    player_engine = persistence_adapter.load_setting("player_engine", "qt")
+    
+    if player_engine == "mpv":
+        from adapters.player.mpv_player import MpvPlayer
+        player_adapter = MpvPlayer()
+    elif player_engine == "vlc":
+        from adapters.player.vlc_player import VlcPlayer
+        player_adapter = VlcPlayer()
+    else:
+        player_adapter = QtPlayer()
+
+    video_service = VideoService(player_adapter, persistence_adapter)
+    main_window = MainWindow(video_service)
+
+    main_window.show()
+
+    sys.exit(app.exec())
+
+if __name__ == "__main__":
+    main()
