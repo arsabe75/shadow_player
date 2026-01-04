@@ -10,7 +10,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.service = service
         self.setWindowTitle("Shadow Player")
-        self.resize(800, 600)
+        self.setMinimumSize(800, 600)
         self.was_maximized_before_fullscreen = False
 
         self.stack = QStackedWidget()
