@@ -41,3 +41,12 @@ class JsonPersistenceAdapter(PersistencePort):
     def load_setting(self, key: str, default: Any = None) -> Any:
         data = self._load_data()
         return data.get(key, default)
+
+    def get_recent_videos(self) -> list[str]:
+        data = self._load_data()
+        return data.get("recent_videos", [])
+
+    def save_recent_videos(self, videos: list[str]):
+        data = self._load_data()
+        data["recent_videos"] = videos
+        self._save_data(data)
