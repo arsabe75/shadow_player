@@ -1,11 +1,13 @@
-from PySide6.QtWidgets import QMainWindow, QStackedWidget
+from PySide6.QtWidgets import QStackedWidget, QVBoxLayout, QWidget
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QKeyEvent, QCloseEvent
+from PySide6.QtGui import QKeyEvent, QCloseEvent, QColor
+from qfluentwidgets import setTheme, Theme
+from qframelesswindow import FramelessWindow, StandardTitleBar
 from adapters.ui.home_screen import HomeScreen
 from adapters.ui.player_screen import PlayerScreen
 from app.services import VideoService
 
-class MainWindow(QMainWindow):
+class MainWindow(FramelessWindow):
     def __init__(self, service: VideoService):
         super().__init__()
         self.service = service
@@ -13,8 +15,43 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(800, 600)
         self.was_maximized_before_fullscreen = False
 
+        # Set dark theme by default for a media player
+        setTheme(Theme.DARK)
+        
+        # Configure title bar for dark theme - set normal and hover colors
+        self.titleBar.minBtn.setNormalColor(Qt.white)
+        self.titleBar.minBtn.setHoverColor(Qt.white)
+        self.titleBar.minBtn.setHoverBackgroundColor(QColor(50, 50, 50))
+        
+        self.titleBar.maxBtn.setNormalColor(Qt.white)
+        self.titleBar.maxBtn.setHoverColor(Qt.white)
+        self.titleBar.maxBtn.setHoverBackgroundColor(QColor(50, 50, 50))
+        
+        self.titleBar.closeBtn.setNormalColor(Qt.white)
+        self.titleBar.closeBtn.setHoverColor(Qt.white)
+        
+        # Apply dark theme to window
+        self.setStyleSheet("""
+            MainWindow {
+                background-color: #202020;
+            }
+        """)
+
+        # Central widget and layout
+        self.central_widget = QWidget()
+        self.central_layout = QVBoxLayout(self.central_widget)
+        self.central_layout.setContentsMargins(0, 0, 0, 0)
+        self.central_layout.setSpacing(0)
+        
+        # Use stacked widget for screens
         self.stack = QStackedWidget()
-        self.setCentralWidget(self.stack)
+        self.central_layout.addWidget(self.stack)
+        
+        # Set central widget
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 32, 0, 0)  # Top margin for title bar
+        layout.setSpacing(0)
+        layout.addWidget(self.central_widget)
 
         self.home_screen = HomeScreen(self.service.persistence, self.handle_engine_change)
         self.player_screen = PlayerScreen(service)
@@ -49,21 +86,20 @@ class MainWindow(QMainWindow):
             else:
                 self.showNormal()
             self.player_screen.set_fullscreen_mode(False)
+            self.titleBar.show()
+            # Restore top margin for title bar
+            self.layout().setContentsMargins(0, 32, 0, 0)
         else:
             # Save current state before going fullscreen
             self.was_maximized_before_fullscreen = self.isMaximized()
             self.showFullScreen()
             self.player_screen.set_fullscreen_mode(True)
+            self.titleBar.hide()
+            # Remove all margins for true fullscreen
+            self.layout().setContentsMargins(0, 0, 0, 0)
 
     def on_video_selected(self, path: str):
         self.service.open_video(path)
-        # Ensure we are not in fullscreen mode unless user requests it
-        if self.isFullScreen():
-             # If we were already fullscreen, stay there? 
-             # Or reset? User says "always opens maximized" implying they want normal window or maximized window, not fullscreen.
-             # But the issue is "always open in fullscreen".
-             # Let's ensure we respect current state or reset if needed.
-             pass 
         self.stack.setCurrentWidget(self.player_screen)
         
     def on_files_selected(self, paths: list[str]):
@@ -106,3 +142,13 @@ class MainWindow(QMainWindow):
         # Reconnect signals
         self.player_screen.back_clicked.connect(self.show_home)
         self.player_screen.toggle_fullscreen.connect(self.toggle_fullscreen_state)
+        
+        # Show success message
+        from qfluentwidgets import InfoBar, InfoBarPosition
+        InfoBar.success(
+            title="Engine Changed",
+            content=f"Player engine changed to {new_engine.upper()}.",
+            parent=self,
+            position=InfoBarPosition.TOP,
+            duration=3000
+        )

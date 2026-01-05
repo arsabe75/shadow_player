@@ -1,3 +1,4 @@
 PySide6==6.8.1
+PySide6-Fluent-Widgets
 python-vlc
 python-mpv

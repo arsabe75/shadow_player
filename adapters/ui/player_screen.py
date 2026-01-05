@@ -1,11 +1,15 @@
 import ctypes
 from domain.models import PlaybackState, MediaStatus, LoopMode
 from app.services import VideoService
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
-                               QSlider, QLabel, QComboBox, QApplication, QStackedLayout,
-                               QListWidget, QListWidgetItem, QFrame, QFileDialog, QSizePolicy,
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,  
+                               QApplication, QStackedLayout,
+                               QListWidgetItem, QFrame, QFileDialog, QSizePolicy,
                                QAbstractItemView)
 from PySide6.QtCore import Qt, QTimer, Signal, QEvent, QSize
+from qfluentwidgets import (
+    PushButton, ToolButton, TransparentToolButton, Slider, BodyLabel,
+    SubtitleLabel, ListWidget, ComboBox, CardWidget, FluentIcon, ToggleButton
+)
 
 # Constants for Win32 API
 GWL_EXSTYLE = -20
@@ -75,7 +79,7 @@ class ClickableOverlay(QWidget):
         event.ignore() 
         super().mouseMoveEvent(event)
 
-class PlaylistPanel(QWidget):
+class PlaylistPanel(CardWidget):
     close_clicked = Signal()
 
     def __init__(self, service: VideoService):
@@ -86,18 +90,18 @@ class PlaylistPanel(QWidget):
         self.refresh_playlist()
 
     def setup_ui(self):
-        # Playlist Panel Style
-        self.setStyleSheet("background-color: #2b2b2b; border-left: 1px solid #444;")
         panel_layout = QVBoxLayout(self)
-        panel_layout.setContentsMargins(10, 10, 10, 10) # Add some padding
+        panel_layout.setContentsMargins(12, 12, 12, 12)
+        panel_layout.setSpacing(8)
         
         # Header
         header_layout = QHBoxLayout()
-        header_lbl = QLabel("Playlist")
-        header_lbl.setStyleSheet("font-size: 16px; font-weight: bold; color: white;")
+        header_lbl = SubtitleLabel("Playlist")
         header_layout.addWidget(header_lbl)
         
-        self.close_btn = QPushButton("X")
+        header_layout.addStretch()
+        
+        self.close_btn = TransparentToolButton(FluentIcon.CLOSE)
         self.close_btn.setFixedSize(30, 30)
         self.close_btn.clicked.connect(self.close_clicked.emit)
         header_layout.addWidget(self.close_btn)
@@ -107,25 +111,26 @@ class PlaylistPanel(QWidget):
         # Toolbar (Add, Shuffle, Loop)
         toolbar_layout = QHBoxLayout()
         
-        self.add_btn = QPushButton("+ Add")
+        self.add_btn = ToolButton(FluentIcon.ADD)
+        self.add_btn.setToolTip("Add Files")
         self.add_btn.clicked.connect(self.add_files)
         toolbar_layout.addWidget(self.add_btn)
         
-        self.shuffle_btn = QPushButton("Shuffle")
-        self.shuffle_btn.setCheckable(True)
+        self.shuffle_btn = ToggleButton("Shuffle")
         self.shuffle_btn.clicked.connect(self.toggle_shuffle)
         toolbar_layout.addWidget(self.shuffle_btn)
         
-        self.loop_btn = QPushButton("Loop: Off")
+        self.loop_btn = PushButton("Loop: Off")
         self.loop_btn.clicked.connect(self.cycle_loop_mode)
         toolbar_layout.addWidget(self.loop_btn)
+        
+        toolbar_layout.addStretch()
         
         panel_layout.addLayout(toolbar_layout)
         
         # List
-        self.list_widget = QListWidget()
+        self.list_widget = ListWidget()
         self.list_widget.setDragDropMode(QAbstractItemView.InternalMove)
-        self.list_widget.setStyleSheet("background-color: transparent; border: none; color: white;")
         self.list_widget.itemDoubleClicked.connect(self.on_item_double_clicked)
         self.list_widget.model().rowsMoved.connect(self.on_rows_moved)
         
@@ -135,9 +140,6 @@ class PlaylistPanel(QWidget):
         self.service.playlist_updated.connect(self.refresh_playlist)
         self.service.loop_mode_changed.connect(self.update_loop_ui)
         self.service.shuffle_mode_changed.connect(self.update_shuffle_ui)
-        # self.transparent_area.mousePressEvent = self.on_transparent_click # Handled by event filter
-
-    # Removed event filter for transparent click
 
     def add_files(self):
         file_paths, _ = QFileDialog.getOpenFileNames(self, "Add to Playlist", "", "Video Files (*.mp4 *.mkv *.avi *.mov *.wmv)")
@@ -167,7 +169,6 @@ class PlaylistPanel(QWidget):
 
     def update_shuffle_ui(self, is_shuffled):
         self.shuffle_btn.setChecked(is_shuffled)
-        self.shuffle_btn.setText("Shuffle: On" if is_shuffled else "Shuffle")
 
     def refresh_playlist(self):
         self.list_widget.blockSignals(True)
@@ -185,7 +186,6 @@ class PlaylistPanel(QWidget):
         self.list_widget.blockSignals(False)
             
     def on_item_double_clicked(self, item):
-        # We find the index based on the row in the list
         idx = self.list_widget.row(item)
         self.service.play_at_index(idx)
 
@@ -196,16 +196,13 @@ class PlaylistPanel(QWidget):
             video = item.data(Qt.UserRole)
             new_list.append(video)
         
-        # Block signal to avoid recursion/refresh while we just rebuilt it
         self.service.playlist_updated.disconnect(self.refresh_playlist)
         self.service.update_playlist(new_list)
         self.service.playlist_updated.connect(self.refresh_playlist)
         
-        # Manually trigger refresh to update indices in titles
         self.refresh_playlist()
 
 class PlayerScreen(QWidget):
-    # ... (signals)
     back_clicked = Signal()
     toggle_fullscreen = Signal()
 
@@ -223,9 +220,9 @@ class PlayerScreen(QWidget):
         self.setup_ui()
         self.setup_connections()
         
-        # Timer for hiding controls (keep this, it's UI behavior not polling)
+        # Timer for hiding controls
         self.hide_timer = QTimer(self)
-        self.hide_timer.setInterval(3000) # 3 seconds
+        self.hide_timer.setInterval(3000)
         self.hide_timer.setSingleShot(True)
         self.hide_timer.timeout.connect(self.hide_controls)
         
@@ -248,77 +245,83 @@ class PlayerScreen(QWidget):
 
         # Top Controls Container
         self.top_controls_widget = QWidget()
+        self.top_controls_widget.setStyleSheet("background-color: rgba(32, 32, 32, 180);")
         top_layout = QHBoxLayout(self.top_controls_widget)
-        self.back_button = QPushButton("Back")
+        top_layout.setContentsMargins(8, 4, 8, 4)
+        
+        self.back_button = ToolButton(FluentIcon.LEFT_ARROW)
+        self.back_button.setToolTip("Back")
         top_layout.addWidget(self.back_button)
         top_layout.addStretch()
         
         layout.addWidget(self.top_controls_widget)
 
-        # 2. Main Horizontal Area (Video + Playlist)
+        # Main Horizontal Area (Video + Playlist)
         self.central_widget = QWidget()
+        self.central_widget.setStyleSheet("background-color: black;")
         self.central_layout = QHBoxLayout(self.central_widget)
         self.central_layout.setContentsMargins(0,0,0,0)
         self.central_layout.setSpacing(0)
         
-        # Video Container
+        # Video Container - set black background for letterboxing
         self.video_container = QWidget()
+        self.video_container.setStyleSheet("background-color: black;")
         self.video_stack = QStackedLayout(self.video_container)
         self.video_stack.setStackingMode(QStackedLayout.StackAll)
         
         self.video_widget = self.service.create_video_widget(self.video_container)
+        self.video_widget.setStyleSheet("background-color: black;")
         self.service.set_video_output(self.video_widget)
-        self.video_widget.installEventFilter(self) # Install filter to catch clicks/double-clicks
+        self.video_widget.installEventFilter(self)
         self.video_stack.addWidget(self.video_widget)
         
-        # Clickable Overlay (Top Layer) with Win32 transparency
-        # Uses layered window with alpha=1 to be invisible but still receive clicks.
-        # This is critical for VLC which renders to a native HWND that paints over Qt.
+        # Clickable Overlay
         self.click_overlay = ClickableOverlay()
         self.click_overlay.double_clicked.connect(self.toggle_fullscreen)
         self.click_overlay.clicked.connect(self._on_video_clicked)
         self.video_stack.addWidget(self.click_overlay)
         
-        self.central_layout.addWidget(self.video_container, stretch=1) # Video takes all space by default
+        self.central_layout.addWidget(self.video_container, stretch=1)
 
-        # Playlist Panel (Side by Side)
+        # Playlist Panel
         self.playlist_panel = PlaylistPanel(self.service)
         self.playlist_panel.hide()
         self.playlist_panel.close_clicked.connect(self.toggle_playlist)
-        # Fixed width or ratio? User said 30%
-        # We can implement 30% ratio by using stretch factors
         
         self.central_layout.addWidget(self.playlist_panel, stretch=0)
         
         layout.addWidget(self.central_widget, stretch=1)
-        
-        # Clean up old Win32 stuff references if any remain...
 
         # Bottom Controls Container
         self.bottom_controls_widget = QWidget()
+        self.bottom_controls_widget.setStyleSheet("background-color: rgba(32, 32, 32, 200);")
         bottom_layout = QVBoxLayout(self.bottom_controls_widget)
+        bottom_layout.setContentsMargins(12, 8, 12, 8)
+        bottom_layout.setSpacing(6)
         
-        # Slider
-        self.slider = QSlider(Qt.Horizontal)
+        # Fluent Slider
+        self.slider = Slider(Qt.Horizontal)
         bottom_layout.addWidget(self.slider)
 
         # Controls (Play/Stop/Time)
         controls_layout = QHBoxLayout()
-        self.play_button = QPushButton("Play")
-        self.play_button.setMaximumWidth(80)
+        controls_layout.setSpacing(8)
+        
+        self.play_button = ToolButton(FluentIcon.PLAY)
+        self.play_button.setToolTip("Play")
         controls_layout.addWidget(self.play_button)
 
-        self.stop_button = QPushButton("Stop")
-        self.stop_button.setMaximumWidth(80)
+        self.stop_button = ToolButton(FluentIcon.POWER_BUTTON)
+        self.stop_button.setToolTip("Stop")
         controls_layout.addWidget(self.stop_button)
         
-        self.time_label = QLabel("00:00 / 00:00")
+        self.time_label = BodyLabel("00:00 / 00:00")
         controls_layout.addWidget(self.time_label)
 
         controls_layout.addStretch()
         
-        self.playlist_btn = QPushButton("Playlist")
-        self.playlist_btn.setCheckable(True)
+        self.playlist_btn = ToggleButton("Playlist")
+        self.playlist_btn.setIcon(FluentIcon.MENU)
         self.playlist_btn.clicked.connect(self.toggle_playlist)
         controls_layout.addWidget(self.playlist_btn)
 
@@ -326,15 +329,17 @@ class PlayerScreen(QWidget):
         
         # Tracks
         tracks_layout = QHBoxLayout()
-        tracks_layout.addWidget(QLabel("Audio:"))
-        self.audio_combo = QComboBox()
+        tracks_layout.setSpacing(8)
+        
+        tracks_layout.addWidget(BodyLabel("Audio:"))
+        self.audio_combo = ComboBox()
         self.audio_combo.setMinimumWidth(200)
         tracks_layout.addWidget(self.audio_combo)
         
         self.audio_combo.blockSignals(True)
         
-        tracks_layout.addWidget(QLabel("Subtitles:"))
-        self.subtitle_combo = QComboBox()
+        tracks_layout.addWidget(BodyLabel("Subtitles:"))
+        self.subtitle_combo = ComboBox()
         self.subtitle_combo.setMinimumWidth(200)
         tracks_layout.addWidget(self.subtitle_combo)
         tracks_layout.addStretch()
@@ -347,13 +352,11 @@ class PlayerScreen(QWidget):
         if self.playlist_panel.isVisible():
             self.playlist_panel.hide()
             self.playlist_btn.setChecked(False)
-            # Restore video to full width
             self.central_layout.setStretch(0, 1)
             self.central_layout.setStretch(1, 0)
         else:
             self.playlist_panel.show()
             self.playlist_btn.setChecked(True)
-            # Set 70/30 split
             self.central_layout.setStretch(0, 7)
             self.central_layout.setStretch(1, 3)
 
@@ -361,21 +364,14 @@ class PlayerScreen(QWidget):
         hwnd = int(widget.winId())
         if hasattr(ctypes, 'windll'):
             try:
-                # Add WS_EX_LAYERED to extended style
                 user32 = ctypes.windll.user32
                 ex_style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
                 user32.SetWindowLongW(hwnd, GWL_EXSTYLE, ex_style | WS_EX_LAYERED)
-                
-                # Set Layered Attributes: ALPHA = 1 (Almost transparent but clickable)
-                # LWA_ALPHA = 0x2
-                # Alpha value: 1 (0 is invisible/hollow, 255 is opaque)
                 user32.SetLayeredWindowAttributes(hwnd, 0, 1, LWA_ALPHA)
             except Exception as e:
                 print(f"DEBUG: Failed to apply transparency: {e}")
 
-    def _apply_win32_colorkey(self, widget, color_ref=0x00FF00FF): # Magenta 0x00RRGGBB format for Win32 (BGR?)
-        # COLORREF in win32 is 0x00BBGGRR
-        # Magenta (255, 0, 255) -> 0x00FF00FF
+    def _apply_win32_colorkey(self, widget, color_ref=0x00FF00FF):
         hwnd = int(widget.winId())
         if hasattr(ctypes, 'windll'):
             try:
@@ -396,7 +392,6 @@ class PlayerScreen(QWidget):
         self.slider.sliderReleased.connect(self.on_slider_released)
         self.slider.valueChanged.connect(self.on_slider_moved)
 
-        # Connect combo boxes
         self.audio_combo.currentIndexChanged.connect(self.on_audio_track_changed)
         self.subtitle_combo.currentIndexChanged.connect(self.on_subtitle_track_changed)
 
@@ -404,11 +399,11 @@ class PlayerScreen(QWidget):
         self.service.close_video()
         self.back_clicked.emit()
 
-    # --- Signal Handlers ---
-
     def _on_position_changed(self, position):
         if not self.updating_slider:
+            self.slider.blockSignals(True)
             self.slider.setValue(position)
+            self.slider.blockSignals(False)
             self.update_time_label(position, self.current_duration)
 
     def _on_duration_changed(self, duration):
@@ -420,18 +415,17 @@ class PlayerScreen(QWidget):
     def _on_playback_state_changed(self, state: PlaybackState):
         self.current_playback_state = state
         if state == PlaybackState.PLAYING:
-            self.play_button.setText("Pause")
-            # Keep overlay on top when playback starts
+            self.play_button.setIcon(FluentIcon.PAUSE)
+            self.play_button.setToolTip("Pause")
             self.click_overlay.raise_()
         else:
-            self.play_button.setText("Play")
+            self.play_button.setIcon(FluentIcon.PLAY)
+            self.play_button.setToolTip("Play")
 
     def _on_media_status_changed(self, status: MediaStatus):
         if status == MediaStatus.LOADED:
-             # Start trying to populate tracks with retries
              self.track_retries = 0
              self.populate_tracks_with_retry()
-        # Removed auto-close on End; handled by Service's playback_finished signal
 
     def populate_tracks_with_retry(self):
         self.track_retries += 1
@@ -439,13 +433,11 @@ class PlayerScreen(QWidget):
 
         self.populate_tracks()
         
-        if len(audio) <= 1 and self.track_retries < 20: # Retry up to 20 times (10 seconds)
+        if len(audio) <= 1 and self.track_retries < 20:
              QTimer.singleShot(500, self.populate_tracks_with_retry)
 
     def _on_playback_finished(self):
          self.back_clicked.emit()
-
-    # --- UI Logic ---
 
     def update_time_label(self, position, duration):
         def format_time(ms):
@@ -479,13 +471,6 @@ class PlayerScreen(QWidget):
         if self.updating_slider:
              self.update_time_label(value, self.current_duration)
 
-    def _on_position_changed(self, position):
-        if not self.updating_slider:
-            self.slider.blockSignals(True)
-            self.slider.setValue(position)
-            self.slider.blockSignals(False)
-            self.update_time_label(position, self.current_duration)
-
     def on_audio_track_changed(self, index):
         self.service.set_audio_track(index)
 
@@ -509,7 +494,6 @@ class PlayerScreen(QWidget):
         self.subtitle_combo.blockSignals(False)
 
     def _on_video_clicked(self):
-        # Close playlist if open
         if self.playlist_panel.isVisible():
             self.toggle_playlist()
         else:
@@ -518,7 +502,7 @@ class PlayerScreen(QWidget):
     def set_fullscreen_mode(self, enabled: bool):
         self.fullscreen_mode = enabled
         self.setMouseTracking(enabled)
-        self.click_overlay.setMouseTracking(enabled) # Track mouse on overlay for controls
+        self.click_overlay.setMouseTracking(enabled)
         
         if enabled:
             self.start_hide_timer()
@@ -536,14 +520,12 @@ class PlayerScreen(QWidget):
         if self.fullscreen_mode:
             self.top_controls_widget.hide()
             self.bottom_controls_widget.hide()
-            # Use global override cursor for QtMultimedia compatibility
             QApplication.setOverrideCursor(Qt.BlankCursor)
             self.controls_hidden = True
 
     def show_controls(self):
         self.top_controls_widget.show()
         self.bottom_controls_widget.show()
-        # Restore cursor using global override
         QApplication.restoreOverrideCursor()
         self.controls_hidden = False
         if self.fullscreen_mode:
@@ -558,16 +540,14 @@ class PlayerScreen(QWidget):
         if self.fullscreen_mode and event.type() == QEvent.Type.MouseMove:
             self.show_controls()
 
-        # Capture double click on the video widget (fallback if overlay is behind native window)
         if obj == self.video_widget:
             if event.type() == QEvent.Type.MouseButtonDblClick:
-                self.click_timer.stop() # Cancel fallback single click
+                self.click_timer.stop()
                 self.toggle_fullscreen.emit()
                 return True
             elif event.type() == QEvent.Type.MouseButtonPress:
                 if event.button() == Qt.LeftButton:
                     self.click_timer.start()
-                # Do NOT return True here effectively
                 
         return super().eventFilter(obj, event)
 
@@ -575,7 +555,6 @@ class PlayerScreen(QWidget):
          self._on_video_clicked()
 
     def mouseDoubleClickEvent(self, event):
-        # Fallback for when the widget itself gets the event
         if event.button() == Qt.LeftButton:
             self.toggle_fullscreen.emit()
             event.accept()

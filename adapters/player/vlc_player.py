@@ -47,7 +47,14 @@ class VlcPlayer(VideoPlayerPort):
         # Initialize VLC Instance with some default options
         # --no-video-title-show: Don't show filename on video start
         # --quiet: Less log clutter
-        self.instance = self.vlc.Instance("--no-video-title-show", "--quiet")
+        # --video-on-top: Keep video on top
+        # --drawable-hwnd: For Windows native rendering
+        # Background color in VLC is set by setting the video's background
+        self.instance = self.vlc.Instance(
+            "--no-video-title-show", 
+            "--quiet",
+            "--no-video-deco"
+        )
         self.player = self.instance.media_player_new()
         self.event_manager = self.player.event_manager()
         
@@ -314,6 +321,27 @@ class VlcPlayer(VideoPlayerPort):
             self.player.set_xwindow(win_id)
         elif sys.platform.startswith('win'):
             self.player.set_hwnd(win_id)
+            # Set the window background to black using Win32 API
+            try:
+                import ctypes
+                from ctypes import wintypes
+                
+                # Get the GDI32 and User32 DLLs
+                gdi32 = ctypes.windll.gdi32
+                user32 = ctypes.windll.user32
+                
+                # Create a black brush
+                BLACK_BRUSH = 4  # GetStockObject constant for black brush
+                black_brush = gdi32.GetStockObject(BLACK_BRUSH)
+                
+                # Set the window background brush using SetClassLongPtr
+                GCL_HBRBACKGROUND = -10
+                user32.SetClassLongPtrW(win_id, GCL_HBRBACKGROUND, black_brush)
+                
+                # Force repaint
+                user32.InvalidateRect(win_id, None, True)
+            except Exception as e:
+                print(f"DEBUG: Failed to set Win32 background: {e}")
         elif sys.platform.startswith('darwin'):
             self.player.set_nsobject(win_id)
             
@@ -323,9 +351,21 @@ class VlcPlayer(VideoPlayerPort):
 
     def create_video_widget(self, parent: Any = None) -> Any:
         from PySide6.QtWidgets import QFrame
+        from PySide6.QtGui import QPalette, QColor
+        from PySide6.QtCore import Qt
+        
         frame = QFrame(parent)
-        frame.setStyleSheet("background-color: black;")
-        frame.setUpdatesEnabled(False) 
+        # Disable transparency attributes - critical for VLC with FramelessWindow
+        frame.setAttribute(Qt.WA_TranslucentBackground, False)
+        frame.setAttribute(Qt.WA_NoSystemBackground, False)
+        frame.setAutoFillBackground(True)
+        
+        # Set black background using palette (more reliable for native rendering)
+        palette = frame.palette()
+        palette.setColor(QPalette.Window, QColor(0, 0, 0))
+        palette.setColor(QPalette.Base, QColor(0, 0, 0))
+        frame.setPalette(palette)
+        frame.setStyleSheet("background-color: black; border: none;")
         return frame
 
     # --- Callbacks Setters ---
