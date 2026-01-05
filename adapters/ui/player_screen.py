@@ -188,7 +188,9 @@ class PlayerScreen(QWidget):
              self.populate_tracks()
         elif status == MediaStatus.End:
              # Maybe reset UI or auto-close?
-             pass
+             # Close the player when video ends and reset progress
+             self.service.close_video(reset_progress=True)
+             self.back_clicked.emit()
 
     # --- UI Logic ---
 

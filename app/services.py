@@ -79,10 +79,13 @@ class VideoService(QObject):
         self._save_current_progress()
         self.player.stop()
 
-    def close_video(self):
+    def close_video(self, reset_progress: bool = False):
         """Stops the video, saves progress, and releases the current video context."""
         if self.current_video:
-            self._save_current_progress()
+            if reset_progress:
+                self.persistence.save_progress(self.current_video.path, 0)
+            else:
+                self._save_current_progress()
             self.player.stop()
             self.current_video = None
 

@@ -32,6 +32,7 @@ class MpvPlayer(VideoPlayerPort):
         
         try:
             self.mpv = mpv.MPV()
+            self.mpv['keep-open'] = 'yes'
         except Exception as e:
             print(f"MPV init error: {type(e).__name__}: {e}")
             raise
