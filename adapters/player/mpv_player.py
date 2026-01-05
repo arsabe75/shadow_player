@@ -197,7 +197,6 @@ class MpvPlayer(VideoPlayerPort):
         from PySide6.QtWidgets import QWidget
         widget = QWidget(parent)
         widget.setStyleSheet("background-color: black;")
-        # Set explicit object name for debugging or styling if needed
         widget.setObjectName("MpvVideoWidget")
         return widget
 

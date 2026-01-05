@@ -1,13 +1,12 @@
-from PySide6.QtWidgets import QStackedWidget, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QStackedWidget, QVBoxLayout, QWidget, QMainWindow
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QKeyEvent, QCloseEvent, QColor
+from PySide6.QtGui import QKeyEvent, QCloseEvent
 from qfluentwidgets import setTheme, Theme
-from qframelesswindow import FramelessWindow, StandardTitleBar
 from adapters.ui.home_screen import HomeScreen
 from adapters.ui.player_screen import PlayerScreen
 from app.services import VideoService
 
-class MainWindow(FramelessWindow):
+class MainWindow(QMainWindow):
     def __init__(self, service: VideoService):
         super().__init__()
         self.service = service
@@ -18,21 +17,9 @@ class MainWindow(FramelessWindow):
         # Set dark theme by default for a media player
         setTheme(Theme.DARK)
         
-        # Configure title bar for dark theme - set normal and hover colors
-        self.titleBar.minBtn.setNormalColor(Qt.white)
-        self.titleBar.minBtn.setHoverColor(Qt.white)
-        self.titleBar.minBtn.setHoverBackgroundColor(QColor(50, 50, 50))
-        
-        self.titleBar.maxBtn.setNormalColor(Qt.white)
-        self.titleBar.maxBtn.setHoverColor(Qt.white)
-        self.titleBar.maxBtn.setHoverBackgroundColor(QColor(50, 50, 50))
-        
-        self.titleBar.closeBtn.setNormalColor(Qt.white)
-        self.titleBar.closeBtn.setHoverColor(Qt.white)
-        
         # Apply dark theme to window
         self.setStyleSheet("""
-            MainWindow {
+            QMainWindow {
                 background-color: #202020;
             }
         """)
@@ -47,11 +34,8 @@ class MainWindow(FramelessWindow):
         self.stack = QStackedWidget()
         self.central_layout.addWidget(self.stack)
         
-        # Set central widget
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 32, 0, 0)  # Top margin for title bar
-        layout.setSpacing(0)
-        layout.addWidget(self.central_widget)
+        # Set central widget using QMainWindow's method
+        self.setCentralWidget(self.central_widget)
 
         self.home_screen = HomeScreen(self.service.persistence, self.handle_engine_change)
         self.player_screen = PlayerScreen(service)
@@ -86,17 +70,11 @@ class MainWindow(FramelessWindow):
             else:
                 self.showNormal()
             self.player_screen.set_fullscreen_mode(False)
-            self.titleBar.show()
-            # Restore top margin for title bar
-            self.layout().setContentsMargins(0, 32, 0, 0)
         else:
             # Save current state before going fullscreen
             self.was_maximized_before_fullscreen = self.isMaximized()
             self.showFullScreen()
             self.player_screen.set_fullscreen_mode(True)
-            self.titleBar.hide()
-            # Remove all margins for true fullscreen
-            self.layout().setContentsMargins(0, 0, 0, 0)
 
     def on_video_selected(self, path: str):
         self.service.open_video(path)
