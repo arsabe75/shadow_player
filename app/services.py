@@ -2,6 +2,8 @@ from PySide6.QtCore import QObject, Signal
 from domain.ports import VideoPlayerPort, PersistencePort
 from domain.models import Video, PlaybackState, MediaStatus
 from typing import Any
+import random
+from domain.models import Video, PlaybackState, MediaStatus, LoopMode
 
 class VideoService(QObject):
     # Signals
@@ -10,6 +12,10 @@ class VideoService(QObject):
     position_changed = Signal(int)
     duration_changed = Signal(int)
     error_occurred = Signal(str)
+    playlist_updated = Signal() # Emitted when playlist content or order changes
+    loop_mode_changed = Signal(object) # LoopMode
+    shuffle_mode_changed = Signal(bool)
+    playback_finished = Signal() # Emitted when the entire playlist/session ends
 
     # Internal signal to bridge non-Qt threads (VLC) to Main Thread
     _internal_status_signal = Signal(object)
@@ -19,6 +25,13 @@ class VideoService(QObject):
         self.player = player
         self.persistence = persistence
         self.current_video = None
+        
+        # Playlist State
+        self.playlist: list[Video] = []
+        self.original_playlist: list[Video] = [] # For shuffle
+        self.current_index = -1
+        self.loop_mode = LoopMode.NO_LOOP
+        self.is_shuffled = False
         
         # Connect internal signal to handler on Main Thread
         self._internal_status_signal.connect(self._on_media_status_changed)
@@ -40,7 +53,9 @@ class VideoService(QObject):
         # Forward the signal first
         self.media_status_changed.emit(status)
         
-        if status == MediaStatus.LOADED:
+        if status == MediaStatus.End:
+             self._on_video_ended()
+        elif status == MediaStatus.LOADED:
             if hasattr(self, '_pending_initial_seek') and self._pending_initial_seek > 0:
                  from PySide6.QtCore import QTimer
                  QTimer.singleShot(250, self._execute_initial_seek)
@@ -51,16 +66,182 @@ class VideoService(QObject):
              self._pending_initial_seek = 0
 
     def open_video(self, path: str):
-        self.current_video = Video(path)
-        self.player.load(path)
+        # Legacy support or single file open
+        self.play_files([path])
+
+    def play_files(self, paths: list[str]):
+        """Replaces current playlist with new files and plays the first one."""
+        self.cleanup_playlist()
+        self.add_files(paths)
+        if self.playlist:
+            self.play_at_index(0)
+
+    def add_files(self, paths: list[str]):
+        """Appends files to the playlist."""
+        new_videos = [Video(path) for path in paths]
+        self.playlist.extend(new_videos)
         
-        saved_position = self.persistence.load_progress(path)
+        if self.is_shuffled:
+            # If shuffled, also add to original in correct place? 
+            # Or just append to original and shuffle newly added? Only full reshuffle for now.
+            self.original_playlist.extend(new_videos)
+            # We don't auto-reshuffle here to avoid disturbing current order too much, 
+            # just append to end of current shuffle view.
+        else:
+            self.original_playlist.extend(new_videos)
+            
+        self.playlist_updated.emit()
+
+    def play_at_index(self, index: int):
+        if 0 <= index < len(self.playlist):
+            self.current_index = index
+            video = self.playlist[index]
+            self._load_and_play(video)
+            self.playlist_updated.emit() # update UI for active item
+
+    def _load_and_play(self, video: Video):
+        self.current_video = video
+        self.player.load(video.path)
+        
+        saved_position = self.persistence.load_progress(video.path)
         if saved_position > 0:
             self._pending_initial_seek = saved_position
         else:
             self._pending_initial_seek = 0
             
         self.player.play()
+
+    def _on_video_ended(self):
+        # Handle Loop One
+        if self.loop_mode == LoopMode.LOOP_ONE:
+            self.player.seek(0)
+            self.player.play()
+            return
+
+        # Auto-advance
+        if self.cur_has_next():
+            self.play_next()
+        elif self.loop_mode == LoopMode.LOOP_ALL:
+            self.play_at_index(0)
+        else:
+            # Playlist finished
+            self.close_video(reset_progress=True)
+            self.playback_finished.emit()
+
+    def cur_has_next(self):
+        return self.current_index + 1 < len(self.playlist)
+
+    def play_next(self):
+        if self.cur_has_next():
+            self.play_at_index(self.current_index + 1)
+        elif self.loop_mode == LoopMode.LOOP_ALL and self.playlist:
+            self.play_at_index(0)
+
+    def play_previous(self):
+        if self.current_index > 0:
+            self.play_at_index(self.current_index - 1)
+        elif self.loop_mode == LoopMode.LOOP_ALL and self.playlist:
+             self.play_at_index(len(self.playlist) - 1)
+
+    def cleanup_playlist(self):
+        self.playlist.clear()
+        self.original_playlist.clear()
+        self.current_index = -1
+        self.playlist_updated.emit()
+
+    def set_loop_mode(self, mode: LoopMode):
+        self.loop_mode = mode
+        self.loop_mode_changed.emit(mode)
+
+    def toggle_shuffle(self):
+        self.is_shuffled = not self.is_shuffled
+        
+        if self.is_shuffled:
+            # Save current playing video to keep it playing
+            current_video = self.playlist[self.current_index] if 0 <= self.current_index < len(self.playlist) else None
+            
+            # Shuffle
+            # self.original_playlist is already up to date if we maintained it
+            # But wait, self.playlist is currently authoritative. 
+            # Ensure original is synced if we modified playlist (reorder)
+            if not self.original_playlist:
+                 self.original_playlist = list(self.playlist)
+
+            random.shuffle(self.playlist)
+            
+            # If playing, move current video to top or find its new index
+            if current_video:
+                new_index = self.playlist.index(current_video)
+                self.current_index = new_index
+        else:
+            # Restore order
+            # We need to find where the current video is in the original list
+            current_video = self.playlist[self.current_index] if 0 <= self.current_index < len(self.playlist) else None
+            
+            if self.original_playlist:
+                self.playlist = list(self.original_playlist)
+            
+            if current_video and current_video in self.playlist:
+                self.current_index = self.playlist.index(current_video)
+            else:
+                self.current_index = 0 # Fallback
+                
+        self.shuffle_mode_changed.emit(self.is_shuffled)
+        self.playlist_updated.emit()
+
+    def update_playlist(self, new_playlist: list[Video]):
+        self.playlist = new_playlist
+        if not self.is_shuffled:
+            self.original_playlist = list(self.playlist)
+        
+        if self.current_video and self.current_video in self.playlist:
+             self.current_index = self.playlist.index(self.current_video)
+        else:
+             self.current_index = -1
+             
+        self.playlist_updated.emit()
+
+    def reorder_playlist(self, from_index: int, to_index: int):
+        if 0 <= from_index < len(self.playlist) and 0 <= to_index < len(self.playlist):
+            item = self.playlist.pop(from_index)
+            self.playlist.insert(to_index, item)
+            
+            # If we moved the playing video, update current_index
+            if self.current_index == from_index:
+                self.current_index = to_index
+            elif from_index < self.current_index <= to_index:
+                self.current_index -= 1
+            elif to_index <= self.current_index < from_index:
+                self.current_index += 1
+            
+            # If not shuffled, update original too
+            if not self.is_shuffled:
+                 item_orig = self.original_playlist.pop(from_index)
+                 self.original_playlist.insert(to_index, item_orig)
+
+            self.playlist_updated.emit()
+
+    def remove_from_playlist(self, index: int):
+         if 0 <= index < len(self.playlist):
+             # removing currently playing?
+             was_playing = (index == self.current_index)
+             
+             removed = self.playlist.pop(index)
+             if not self.is_shuffled:
+                 self.original_playlist.remove(removed)
+                 
+             if index < self.current_index:
+                 self.current_index -= 1
+             elif index == self.current_index:
+                 # If we removed the playing one, play next?
+                 if self.cur_has_next():
+                     self.play_at_index(self.current_index) # Index is now next item
+                 elif self.playlist:
+                      self.play_at_index(len(self.playlist)-1)
+                 else:
+                      self.stop()
+             
+             self.playlist_updated.emit()
 
     def _save_current_progress(self):
         # We can use the last known position from player

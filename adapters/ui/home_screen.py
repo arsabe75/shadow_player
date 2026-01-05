@@ -86,6 +86,7 @@ class RecentVideoItemWidget(QWidget):
 
 class HomeScreen(QWidget):
     video_selected = Signal(str)
+    files_selected = Signal(list)
 
     def __init__(self, persistence, on_engine_change=None):
         super().__init__()
@@ -109,7 +110,7 @@ class HomeScreen(QWidget):
         self.label.setStyleSheet("font-size: 24px; font-weight: bold; margin-bottom: 20px;")
         left_layout.addWidget(self.label, alignment=Qt.AlignCenter)
 
-        self.open_button = QPushButton("Open File")
+        self.open_button = QPushButton("Open File(s)")
         self.open_button.setFixedSize(200, 50)
         self.open_button.setStyleSheet("font-size: 16px;")
         self.open_button.clicked.connect(self.browse_file)
@@ -230,7 +231,15 @@ class HomeScreen(QWidget):
         dialog.exec()
 
     def browse_file(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Open Video", "", "Video Files (*.mp4 *.mkv *.avi *.mov *.wmv)")
-        if file_path:
-            self.add_recent_video(file_path)
-            self.video_selected.emit(file_path)
+        file_paths, _ = QFileDialog.getOpenFileNames(self, "Open Video(s)", "", "Video Files (*.mp4 *.mkv *.avi *.mov *.wmv)")
+        if file_paths:
+            # We treat the first one as "most recent" for the list logic, or add all?
+            # Let's add the first one so it appears in recent.
+            # Ideally we should start the player with the playlist.
+            
+            # Add to recent
+            for path in reversed(file_paths):
+                 self.add_recent_video(path)
+
+            # Signal main window to play these files
+            self.files_selected.emit(file_paths)

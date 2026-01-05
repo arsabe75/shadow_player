@@ -2,6 +2,11 @@ import sys
 import os
 import ctypes
 
+# Add project root to sys.path to ensure absolute imports work correctly
+project_root = os.path.dirname(os.path.abspath(__file__))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
 # Pre-load MPV DLL before any Qt imports to avoid conflicts
 # Check settings first using a minimal JSON read
 def _preload_mpv_if_needed():

@@ -23,3 +23,8 @@ class Video:
     def __post_init__(self):
         if not self.title:
             self.title = os.path.basename(self.path)
+
+class LoopMode(Enum):
+    NO_LOOP = auto()
+    LOOP_ALL = auto()
+    LOOP_ONE = auto()

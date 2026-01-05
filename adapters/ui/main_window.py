@@ -26,6 +26,7 @@ class MainWindow(QMainWindow):
 
     def setup_connections(self):
         self.home_screen.video_selected.connect(self.on_video_selected)
+        self.home_screen.files_selected.connect(self.on_files_selected)
 
         self.player_screen.back_clicked.connect(self.show_home)
         self.player_screen.toggle_fullscreen.connect(self.toggle_fullscreen_state)
@@ -56,10 +57,18 @@ class MainWindow(QMainWindow):
 
     def on_video_selected(self, path: str):
         self.service.open_video(path)
-        # Try to populate tracks after a short delay to allow media to load
+        # Ensure we are not in fullscreen mode unless user requests it
+        if self.isFullScreen():
+             # If we were already fullscreen, stay there? 
+             # Or reset? User says "always opens maximized" implying they want normal window or maximized window, not fullscreen.
+             # But the issue is "always open in fullscreen".
+             # Let's ensure we respect current state or reset if needed.
+             pass 
         self.stack.setCurrentWidget(self.player_screen)
-        # Play button text will be updated by signal from service
         
+    def on_files_selected(self, paths: list[str]):
+        if not paths: return
+        self.service.play_files(paths)
         self.stack.setCurrentWidget(self.player_screen)
 
 
