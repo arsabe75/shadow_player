@@ -4,6 +4,7 @@ from PySide6.QtGui import QKeyEvent, QCloseEvent
 from qfluentwidgets import setTheme, Theme
 from adapters.ui.home_screen import HomeScreen
 from adapters.ui.player_screen import PlayerScreen
+from adapters.ui.playlist_manager import PlaylistManagerScreen
 from app.services import VideoService
 
 class MainWindow(QMainWindow):
@@ -39,18 +40,33 @@ class MainWindow(QMainWindow):
 
         self.home_screen = HomeScreen(self.service.persistence, self.handle_engine_change)
         self.player_screen = PlayerScreen(service)
+        self.playlist_manager = PlaylistManagerScreen(service)
 
         self.stack.addWidget(self.home_screen)
         self.stack.addWidget(self.player_screen)
+        self.stack.addWidget(self.playlist_manager)
 
         self.setup_connections()
 
     def setup_connections(self):
         self.home_screen.video_selected.connect(self.on_video_selected)
         self.home_screen.files_selected.connect(self.on_files_selected)
+        self.home_screen.lists_clicked.connect(self.show_playlist_manager)
 
         self.player_screen.back_clicked.connect(self.show_home)
         self.player_screen.toggle_fullscreen.connect(self.toggle_fullscreen_state)
+        
+        self.playlist_manager.back_clicked.connect(self.show_home)
+        self.playlist_manager.playlist_started.connect(self.on_playlist_started)
+
+    def show_playlist_manager(self):
+        self.stack.setCurrentWidget(self.playlist_manager)
+
+    def on_playlist_started(self, videos: list):
+        if not videos: return
+        paths = [v.path for v in videos]
+        self.service.play_files(paths)
+        self.stack.setCurrentWidget(self.player_screen)
 
     def keyPressEvent(self, event: QKeyEvent):
         if event.key() == Qt.Key_F:

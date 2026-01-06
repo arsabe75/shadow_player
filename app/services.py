@@ -310,3 +310,47 @@ class VideoService(QObject):
         
     def set_subtitle_track(self, index: int):
         self.player.set_subtitle_track(index)
+
+    def save_playlist_to_file(self, path: str):
+        """Saves the current playlist to an M3U file."""
+        try:
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write("#EXTM3U\n")
+                for video in self.playlist:
+                    # Write metadata if available (duration not strictly tracked in model yet, but title is)
+                    f.write(f"#EXTINF:-1,{video.title}\n")
+                    f.write(f"{video.path}\n")
+        except Exception as e:
+            self.error_occurred.emit(f"Failed to save playlist: {e}")
+
+    def load_playlist_from_file(self, path: str) -> list[Video]:
+        """Parses an M3U file and returns a list of Video objects."""
+        new_videos = []
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+            
+            current_title = ""
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                
+                if line.startswith("#EXTINF:"):
+                    # #EXTINF:duration,title
+                    parts = line.split(",", 1)
+                    if len(parts) == 2:
+                        current_title = parts[1]
+                elif line.startswith("#"):
+                    continue
+                else:
+                    # Is a file path
+                    video = Video(line, title=current_title if current_title else "")
+                    new_videos.append(video)
+                    current_title = "" # Reset for next entry
+            
+            return new_videos
+
+        except Exception as e:
+            self.error_occurred.emit(f"Failed to load playlist: {e}")
+            return []

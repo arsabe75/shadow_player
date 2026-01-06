@@ -93,6 +93,7 @@ class RecentVideoItemWidget(QWidget):
 class HomeScreen(QWidget):
     video_selected = Signal(str)
     files_selected = Signal(list)
+    lists_clicked = Signal()
 
     def __init__(self, persistence, on_engine_change=None):
         super().__init__()
@@ -119,13 +120,31 @@ class HomeScreen(QWidget):
         
         left_layout.addSpacing(20)
 
-        self.open_button = PrimaryPushButton(FluentIcon.FOLDER, "Open File(s)")
-        self.open_button.setFixedSize(220, 50)
+        left_layout.addSpacing(20)
+
+        # File Operations Container
+        files_layout = QHBoxLayout()
+        files_layout.setSpacing(4)
+
+        self.open_button = PrimaryPushButton(FluentIcon.FOLDER, "Local Files")
+        self.open_button.setFixedSize(160, 50)
         self.open_button.clicked.connect(self.browse_file)
-        left_layout.addWidget(self.open_button, alignment=Qt.AlignCenter)
+        files_layout.addWidget(self.open_button)
+
+        self.lists_button = PushButton(FluentIcon.LIBRARY, "Lists")
+        self.lists_button.setFixedSize(80, 50)
+        self.lists_button.clicked.connect(self.lists_clicked.emit)
+        files_layout.addWidget(self.lists_button)
+
+        # Center the button group
+        button_container = QWidget()
+        button_container.setLayout(files_layout)
+        button_container.setFixedWidth(250)
+        
+        left_layout.addWidget(button_container, alignment=Qt.AlignCenter)
 
         self.settings_button = PushButton(FluentIcon.SETTING, "Settings")
-        self.settings_button.setFixedSize(220, 50)
+        self.settings_button.setFixedSize(250, 50)
         self.settings_button.clicked.connect(self.open_settings)
         left_layout.addWidget(self.settings_button, alignment=Qt.AlignCenter)
 

@@ -115,6 +115,11 @@ class PlaylistPanel(CardWidget):
         self.add_btn.setToolTip("Add Files")
         self.add_btn.clicked.connect(self.add_files)
         toolbar_layout.addWidget(self.add_btn)
+
+        self.save_btn = ToolButton(FluentIcon.SAVE)
+        self.save_btn.setToolTip("Save Playlist")
+        self.save_btn.clicked.connect(self.save_playlist)
+        toolbar_layout.addWidget(self.save_btn)
         
         self.shuffle_btn = ToggleButton("Shuffle")
         self.shuffle_btn.clicked.connect(self.toggle_shuffle)
@@ -145,6 +150,11 @@ class PlaylistPanel(CardWidget):
         file_paths, _ = QFileDialog.getOpenFileNames(self, "Add to Playlist", "", "Video Files (*.mp4 *.mkv *.avi *.mov *.wmv)")
         if file_paths:
             self.service.add_files(file_paths)
+
+    def save_playlist(self):
+        path, _ = QFileDialog.getSaveFileName(self, "Save Playlist", "", "M3U Playlist (*.m3u)")
+        if path:
+            self.service.save_playlist_to_file(path)
 
     def toggle_shuffle(self):
         self.service.toggle_shuffle()
