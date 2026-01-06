@@ -12,7 +12,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.service = service
         self.setWindowTitle("Shadow Player")
-        self.setMinimumSize(800, 600)
+        self.setMinimumSize(1024, 768)
+        self.resize(1024, 768)
         self.was_maximized_before_fullscreen = False
 
         # Set dark theme by default for a media player
@@ -62,10 +63,10 @@ class MainWindow(QMainWindow):
     def show_playlist_manager(self):
         self.stack.setCurrentWidget(self.playlist_manager)
 
-    def on_playlist_started(self, videos: list):
+    def on_playlist_started(self, videos: list, start_from_beginning: bool = False):
         if not videos: return
         paths = [v.path for v in videos]
-        self.service.play_files(paths)
+        self.service.play_files(paths, start_from_beginning=start_from_beginning)
         self.stack.setCurrentWidget(self.player_screen)
 
     def keyPressEvent(self, event: QKeyEvent):

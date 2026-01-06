@@ -84,8 +84,9 @@ class VideoService(QObject):
         # Legacy support or single file open
         self.play_files([path])
 
-    def play_files(self, paths: list[str]):
+    def play_files(self, paths: list[str], start_from_beginning: bool = False):
         """Replaces current playlist with new files and plays the first one."""
+        self.start_from_beginning = start_from_beginning
         self.cleanup_playlist()
         self.add_files(paths)
         if self.playlist:
@@ -118,11 +119,15 @@ class VideoService(QObject):
         self.current_video = video
         self.player.load(video.path)
         
-        saved_position = self.persistence.load_progress(video.path)
-        if saved_position > 0:
-            self._pending_initial_seek = saved_position
-        else:
+        # Check if we should start from beginning (flag set) or use saved progress
+        if getattr(self, 'start_from_beginning', False):
             self._pending_initial_seek = 0
+        else:
+            saved_position = self.persistence.load_progress(video.path)
+            if saved_position > 0:
+                self._pending_initial_seek = saved_position
+            else:
+                self._pending_initial_seek = 0
             
         self.player.play()
 

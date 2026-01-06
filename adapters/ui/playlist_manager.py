@@ -6,13 +6,13 @@ from PySide6.QtCore import Qt, Signal
 from qfluentwidgets import (
     PushButton, PrimaryPushButton, TitleLabel, SubtitleLabel,
     ListWidget, ToolButton, TransparentToolButton, FluentIcon,
-    CardWidget, BodyLabel, LineEdit
+    CardWidget, BodyLabel, LineEdit, CheckBox
 )
 from domain.models import Video
 
 class PlaylistManagerScreen(QWidget):
     back_clicked = Signal()
-    playlist_started = Signal(list) # Emits list of videos to play
+    playlist_started = Signal(list, bool) # Emits (list of videos, start_from_beginning)
 
     def __init__(self, service):
         super().__init__()
@@ -63,6 +63,13 @@ class PlaylistManagerScreen(QWidget):
         toolbar_layout.addWidget(self.clear_btn)
 
         toolbar_layout.addStretch()
+        
+        # Start from Beginning checkbox
+        self.start_from_beginning_cb = CheckBox("Start from Beginning")
+        self.start_from_beginning_cb.setToolTip("When checked, all videos will start from 0:00 ignoring saved progress")
+        toolbar_layout.addWidget(self.start_from_beginning_cb)
+        
+        toolbar_layout.addSpacing(12)
         
         # Play Button
         self.play_btn = PrimaryPushButton(FluentIcon.PLAY, "Play Now")
@@ -167,4 +174,4 @@ class PlaylistManagerScreen(QWidget):
 
     def start_playback(self):
         if self.current_videos:
-            self.playlist_started.emit(self.current_videos)
+            self.playlist_started.emit(self.current_videos, self.start_from_beginning_cb.isChecked())
