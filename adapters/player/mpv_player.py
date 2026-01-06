@@ -7,26 +7,31 @@ from typing import List, Any
 class MpvPlayer(VideoPlayerPort):
     def __init__(self, mpv_path: str = "mpv"):
         # Add mpv folder to PATH so ctypes can find the DLL
-        full_mpv_path = os.path.abspath(mpv_path)
-        dll_loaded = False
-        
-        if os.path.exists(full_mpv_path):
-             os.environ["PATH"] = full_mpv_path + os.pathsep + os.environ["PATH"]
-             
-             # Try to pre-load DLL with various possible names
-             dll_names = ["libmpv-2.dll", "mpv-1.dll", "mpv-2.dll", "libmpv.dll"]
-             for dll_name in dll_names:
-                 dll_path = os.path.join(full_mpv_path, dll_name)
-                 if os.path.exists(dll_path):
-                     try:
-                         ctypes.CDLL(dll_path)
-                         dll_loaded = True
-                         break
-                     except OSError:
-                         continue
-        
-        if not dll_loaded:
-            raise OSError(f"Could not find or load libmpv DLL in {full_mpv_path}. Expected one of: libmpv-2.dll, mpv-1.dll, mpv-2.dll, libmpv.dll")
+        if sys.platform == 'win32':
+            full_mpv_path = os.path.abspath(mpv_path)
+            dll_loaded = False
+            
+            if os.path.exists(full_mpv_path):
+                    os.environ["PATH"] = full_mpv_path + os.pathsep + os.environ["PATH"]
+                    
+                    # Try to pre-load DLL with various possible names
+                    dll_names = ["libmpv-2.dll", "mpv-1.dll", "mpv-2.dll", "libmpv.dll"]
+                    for dll_name in dll_names:
+                        dll_path = os.path.join(full_mpv_path, dll_name)
+                        if os.path.exists(dll_path):
+                            try:
+                                ctypes.CDLL(dll_path)
+                                dll_loaded = True
+                                break
+                            except OSError:
+                                continue
+            
+            if not dll_loaded:
+                raise OSError(f"Could not find or load libmpv DLL in {full_mpv_path}. Expected one of: libmpv-2.dll, mpv-1.dll, mpv-2.dll, libmpv.dll")
+        else:
+            # On Linux, python-mpv usually finds the system library (libmpv.so) 
+            # as long as 'libmpv-dev' or similar is installed.
+            pass
         
         import mpv
         

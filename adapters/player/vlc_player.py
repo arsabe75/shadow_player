@@ -8,33 +8,38 @@ from typing import List, Any, Optional
 class VlcPlayer(VideoPlayerPort):
     def __init__(self, vlc_path: str = "vlc"):
         # Add vlc folder to PATH and Environment so python-vlc finds it
-        full_vlc_path = os.path.abspath(vlc_path)
-        
-        if os.path.exists(full_vlc_path):
-             os.environ["PATH"] = full_vlc_path + os.pathsep + os.environ["PATH"]
-             # Important for python-vlc to find libvlc.dll
-             os.environ["PYTHON_VLC_MODULE_PATH"] = full_vlc_path 
-             
-             # For Python 3.8+ on Windows, standard PATH is ignored for DLL loading
-             if hasattr(os, 'add_dll_directory'):
-                 try:
-                     os.add_dll_directory(full_vlc_path)
-                 except OSError:
-                     pass
-             
-             # Also try to proactively load the DLL to ensure it works
-             try:
-                 # Load libvlccore first (dependency)
-                 core_path = os.path.join(full_vlc_path, "libvlccore.dll")
-                 if os.path.exists(core_path):
-                     ctypes.CDLL(core_path)
-                 
-                 # Then libvlc
-                 dll_path = os.path.join(full_vlc_path, "libvlc.dll")
-                 if os.path.exists(dll_path):
-                     ctypes.CDLL(dll_path)
-             except OSError:
-                 pass
+        if sys.platform == 'win32':
+            full_vlc_path = os.path.abspath(vlc_path)
+            
+            if os.path.exists(full_vlc_path):
+                    os.environ["PATH"] = full_vlc_path + os.pathsep + os.environ["PATH"]
+                    # Important for python-vlc to find libvlc.dll
+                    os.environ["PYTHON_VLC_MODULE_PATH"] = full_vlc_path 
+                    
+                    # For Python 3.8+ on Windows, standard PATH is ignored for DLL loading
+                    if hasattr(os, 'add_dll_directory'):
+                        try:
+                            os.add_dll_directory(full_vlc_path)
+                        except OSError:
+                            pass
+                    
+                    # Also try to proactively load the DLL to ensure it works
+                    try:
+                        # Load libvlccore first (dependency)
+                        core_path = os.path.join(full_vlc_path, "libvlccore.dll")
+                        if os.path.exists(core_path):
+                            ctypes.CDLL(core_path)
+                        
+                        # Then libvlc
+                        dll_path = os.path.join(full_vlc_path, "libvlc.dll")
+                        if os.path.exists(dll_path):
+                            ctypes.CDLL(dll_path)
+                    except OSError:
+                        pass
+        else:
+            # On Linux/MacOS, we assume VLC is installed system-wide
+            # and python-vlc will find it automatically.
+            pass
         
         try:
             import vlc
@@ -42,7 +47,10 @@ class VlcPlayer(VideoPlayerPort):
         except ImportError:
             raise ImportError("python-vlc is not installed. Please run 'pip install python-vlc'")
         except OSError:
-             raise OSError(f"Could not find or load libvlc.dll in {full_vlc_path} or system path.")
+            if sys.platform == 'win32':
+                 raise OSError(f"Could not find or load libvlc.dll in {full_vlc_path} or system path.")
+            else:
+                 raise OSError("Could not load libvlc. Is VLC installed? (try 'sudo apt install vlc libvlc-dev')")
 
         # Initialize VLC Instance with some default options
         # --no-video-title-show: Don't show filename on video start

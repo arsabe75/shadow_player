@@ -12,17 +12,18 @@ if project_root not in sys.path:
 def _preload_mpv_if_needed():
     import json
     try:
-        with open("user_data.json", "r") as f:
-            data = json.load(f)
-            if data.get("player_engine") == "mpv":
-                mpv_path = os.path.abspath("mpv")
-                if os.path.exists(mpv_path):
-                    os.environ["PATH"] = mpv_path + os.pathsep + os.environ["PATH"]
-                    for dll_name in ["libmpv-2.dll", "mpv-1.dll", "mpv-2.dll"]:
-                        dll_path = os.path.join(mpv_path, dll_name)
-                        if os.path.exists(dll_path):
-                            ctypes.CDLL(dll_path)
-                            break
+        if sys.platform == 'win32':
+            with open("user_data.json", "r") as f:
+                data = json.load(f)
+                if data.get("player_engine") == "mpv":
+                    mpv_path = os.path.abspath("mpv")
+                    if os.path.exists(mpv_path):
+                        os.environ["PATH"] = mpv_path + os.pathsep + os.environ["PATH"]
+                        for dll_name in ["libmpv-2.dll", "mpv-1.dll", "mpv-2.dll"]:
+                            dll_path = os.path.join(mpv_path, dll_name)
+                            if os.path.exists(dll_path):
+                                ctypes.CDLL(dll_path)
+                                break
     except (FileNotFoundError, json.JSONDecodeError):
         pass
 
