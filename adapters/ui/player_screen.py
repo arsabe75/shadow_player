@@ -367,6 +367,12 @@ class PlayerScreen(QWidget):
         self.back_button = ToolButton(FluentIcon.LEFT_ARROW)
         self.back_button.setToolTip("Back")
         top_layout.addWidget(self.back_button)
+        
+        # Video Title Label
+        self.title_label = BodyLabel("")
+        self.title_label.setStyleSheet("color: white; padding-left: 10px; font-weight: bold;")
+        top_layout.addWidget(self.title_label)
+        
         top_layout.addStretch()
         
         layout.addWidget(self.top_controls_widget)
@@ -571,6 +577,7 @@ class PlayerScreen(QWidget):
 
     def _on_media_status_changed(self, status: MediaStatus):
         if status == MediaStatus.LOADED:
+             self.update_video_title()
              self.track_retries = 0
              self.populate_tracks_with_retry()
 
@@ -582,6 +589,14 @@ class PlayerScreen(QWidget):
         
         if len(audio) <= 1 and self.track_retries < 20:
              QTimer.singleShot(500, self.populate_tracks_with_retry)
+
+    def update_video_title(self):
+        if self.service.current_video:
+            self.title_label.setText(self.service.current_video.title)
+            # Ensure it's white even if theme changes, though inline style handles it
+            self.title_label.setStyleSheet("color: white; padding-left: 10px; font-weight: bold;")
+        else:
+            self.title_label.setText("")
 
     def _on_playback_finished(self):
          self.back_clicked.emit()
