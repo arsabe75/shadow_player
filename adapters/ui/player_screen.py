@@ -317,9 +317,17 @@ class PlayerScreen(QWidget):
         controls_layout = QHBoxLayout()
         controls_layout.setSpacing(8)
         
+        self.prev_button = ToolButton(FluentIcon.LEFT_ARROW)
+        self.prev_button.setToolTip("Previous")
+        controls_layout.addWidget(self.prev_button)
+
         self.play_button = ToolButton(FluentIcon.PLAY)
         self.play_button.setToolTip("Play")
         controls_layout.addWidget(self.play_button)
+
+        self.next_button = ToolButton(FluentIcon.RIGHT_ARROW)
+        self.next_button.setToolTip("Next")
+        controls_layout.addWidget(self.next_button)
 
         self.stop_button = ToolButton(FluentIcon.POWER_BUTTON)
         self.stop_button.setToolTip("Stop")
@@ -404,6 +412,14 @@ class PlayerScreen(QWidget):
 
         self.audio_combo.currentIndexChanged.connect(self.on_audio_track_changed)
         self.subtitle_combo.currentIndexChanged.connect(self.on_subtitle_track_changed)
+
+        self.prev_button.clicked.connect(self.service.play_previous)
+        self.next_button.clicked.connect(self.service.play_next)
+        
+        self.service.playlist_updated.connect(self.update_navigation_controls)
+        
+        # Initial state
+        self.update_navigation_controls()
 
     def _on_back_clicked(self):
         self.service.close_video()
@@ -502,6 +518,11 @@ class PlayerScreen(QWidget):
         
         self.audio_combo.blockSignals(False)
         self.subtitle_combo.blockSignals(False)
+
+    def update_navigation_controls(self):
+        has_playlist = len(self.service.playlist) > 1
+        self.prev_button.setVisible(has_playlist)
+        self.next_button.setVisible(has_playlist)
 
     def _on_video_clicked(self):
         if self.playlist_panel.isVisible():
