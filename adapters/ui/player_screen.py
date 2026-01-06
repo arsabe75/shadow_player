@@ -4,12 +4,118 @@ from app.services import VideoService
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,  
                                QApplication, QStackedLayout,
                                QListWidgetItem, QFrame, QFileDialog, QSizePolicy,
-                               QAbstractItemView)
+                               QAbstractItemView, QSlider, QStyleOptionSlider, QStyle)
 from PySide6.QtCore import Qt, QTimer, Signal, QEvent, QSize
+from PySide6.QtGui import QMouseEvent
 from qfluentwidgets import (
-    PushButton, ToolButton, TransparentToolButton, Slider, BodyLabel,
+    PushButton, ToolButton, TransparentToolButton, BodyLabel,
     SubtitleLabel, ListWidget, ComboBox, CardWidget, FluentIcon, ToggleButton
 )
+
+
+class VideoSlider(QSlider):
+    """
+    Custom slider for video progress that supports:
+    - Click to seek (not just drag)
+    - Proper visual synchronization
+    - Styled to match the dark theme
+    """
+    # Signal emitted when user interacts (click or drag release)
+    userSeeked = Signal(int)  # Emits the new value
+    
+    def __init__(self, orientation=Qt.Horizontal, parent=None):
+        super().__init__(orientation, parent)
+        self._is_dragging = False  # True while user is dragging
+        self.setRange(0, 10000)
+        self._apply_style()
+    
+    def _apply_style(self):
+        """Apply dark theme styling to the slider."""
+        self.setStyleSheet("""
+            QSlider::groove:horizontal {
+                border: none;
+                height: 6px;
+                background: #3d3d3d;
+                border-radius: 3px;
+            }
+            QSlider::sub-page:horizontal {
+                background: #0078d4;
+                border-radius: 3px;
+            }
+            QSlider::add-page:horizontal {
+                background: #3d3d3d;
+                border-radius: 3px;
+            }
+            QSlider::handle:horizontal {
+                background: #ffffff;
+                border: none;
+                width: 14px;
+                height: 14px;
+                margin: -4px 0;
+                border-radius: 7px;
+            }
+            QSlider::handle:horizontal:hover {
+                background: #e0e0e0;
+            }
+            QSlider::handle:horizontal:pressed {
+                background: #c0c0c0;
+            }
+        """)
+    
+    def _calculateValueFromPosition(self, pos_x, pos_y):
+        """Calculate slider value from mouse position."""
+        opt = QStyleOptionSlider()
+        self.initStyleOption(opt)
+        groove_rect = self.style().subControlRect(
+            QStyle.CC_Slider, opt, QStyle.SC_SliderGroove, self
+        )
+        handle_rect = self.style().subControlRect(
+            QStyle.CC_Slider, opt, QStyle.SC_SliderHandle, self
+        )
+        
+        if self.orientation() == Qt.Horizontal:
+            slider_length = groove_rect.width() - handle_rect.width()
+            slider_min = groove_rect.x() + handle_rect.width() // 2
+            pos = pos_x
+        else:
+            slider_length = groove_rect.height() - handle_rect.height()
+            slider_min = groove_rect.y() + handle_rect.height() // 2
+            pos = pos_y
+        
+        if slider_length > 0:
+            new_val = self.minimum() + (self.maximum() - self.minimum()) * (pos - slider_min) / slider_length
+            return max(self.minimum(), min(self.maximum(), int(new_val)))
+        return self.value()
+    
+    def mousePressEvent(self, event: QMouseEvent):
+        """Handle mouse click to seek directly to that position."""
+        if event.button() == Qt.LeftButton:
+            self._is_dragging = True
+            new_val = self._calculateValueFromPosition(event.position().x(), event.position().y())
+            self.setValue(new_val)
+            # Emit seek immediately on click
+            self.userSeeked.emit(new_val)
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+    
+    def mouseMoveEvent(self, event: QMouseEvent):
+        """Handle drag."""
+        if self._is_dragging and (event.buttons() & Qt.LeftButton):
+            new_val = self._calculateValueFromPosition(event.position().x(), event.position().y())
+            self.setValue(new_val)
+        super().mouseMoveEvent(event)
+    
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        """Handle mouse release - emit seek signal and end drag."""
+        if event.button() == Qt.LeftButton and self._is_dragging:
+            self._is_dragging = False
+            self.userSeeked.emit(self.value())
+        super().mouseReleaseEvent(event)
+    
+    def isUserInteraction(self) -> bool:
+        """Returns True if user is currently dragging the slider."""
+        return self._is_dragging
 
 # Constants for Win32 API
 GWL_EXSTYLE = -20
@@ -219,7 +325,6 @@ class PlayerScreen(QWidget):
     def __init__(self, service: VideoService):
         super().__init__()
         self.service = service
-        self.updating_slider = False
         
         # State tracking
         self.fullscreen_mode = False
@@ -309,8 +414,8 @@ class PlayerScreen(QWidget):
         bottom_layout.setContentsMargins(12, 8, 12, 8)
         bottom_layout.setSpacing(6)
         
-        # Fluent Slider
-        self.slider = Slider(Qt.Horizontal)
+        # Custom Video Slider with click-to-seek support
+        self.slider = VideoSlider(Qt.Horizontal)
         bottom_layout.addWidget(self.slider)
 
         # Controls (Play/Stop/Time)
@@ -406,9 +511,8 @@ class PlayerScreen(QWidget):
         self.play_button.clicked.connect(self.toggle_play)
         self.stop_button.clicked.connect(self.stop_video)
         
-        self.slider.sliderPressed.connect(self.on_slider_pressed)
-        self.slider.sliderReleased.connect(self.on_slider_released)
-        self.slider.valueChanged.connect(self.on_slider_moved)
+        # Connect VideoSlider's userSeeked signal - fires on both click and drag release
+        self.slider.userSeeked.connect(self.on_slider_seek)
 
         self.audio_combo.currentIndexChanged.connect(self.on_audio_track_changed)
         self.subtitle_combo.currentIndexChanged.connect(self.on_subtitle_track_changed)
@@ -425,18 +529,35 @@ class PlayerScreen(QWidget):
         self.service.close_video()
         self.back_clicked.emit()
 
+    def _position_to_slider(self, position: int) -> int:
+        """Convert position in ms to slider value (0-10000)."""
+        if self.current_duration <= 0:
+            return 0
+        return int((position / self.current_duration) * 10000)
+    
+    def _slider_to_position(self, slider_value: int) -> int:
+        """Convert slider value (0-10000) to position in ms."""
+        if self.current_duration <= 0:
+            return 0
+        return int((slider_value / 10000) * self.current_duration)
+
     def _on_position_changed(self, position):
-        if not self.updating_slider:
+        # Only update slider if user is not interacting with it
+        if not self.slider.isUserInteraction() and self.current_duration > 0:
+            # Convert position to normalized slider value
+            slider_value = self._position_to_slider(position)
             self.slider.blockSignals(True)
-            self.slider.setValue(position)
+            self.slider.setValue(slider_value)
             self.slider.blockSignals(False)
+            self.update_time_label(position, self.current_duration)
+        elif not self.slider.isUserInteraction():
+            # Just update time label even without valid duration
             self.update_time_label(position, self.current_duration)
 
     def _on_duration_changed(self, duration):
-        self.current_duration = duration
         if duration > 0:
-            self.slider.setMaximum(duration)
-        self.update_time_label(self.slider.value(), duration)
+            self.current_duration = duration
+        self.update_time_label(self._slider_to_position(self.slider.value()), self.current_duration)
 
     def _on_playback_state_changed(self, state: PlaybackState):
         self.current_playback_state = state
@@ -486,16 +607,11 @@ class PlayerScreen(QWidget):
         self.service.close_video()
         self.back_clicked.emit()
 
-    def on_slider_pressed(self):
-        self.updating_slider = True
-
-    def on_slider_released(self):
-        self.updating_slider = False
-        self.service.seek(self.slider.value())
-
-    def on_slider_moved(self, value):
-        if self.updating_slider:
-             self.update_time_label(value, self.current_duration)
+    def on_slider_seek(self, slider_value):
+        """Called when user seeks via click or drag on the slider."""
+        position_ms = self._slider_to_position(slider_value)
+        self.service.seek(position_ms)
+        self.update_time_label(position_ms, self.current_duration)
 
     def on_audio_track_changed(self, index):
         self.service.set_audio_track(index)

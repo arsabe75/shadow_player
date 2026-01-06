@@ -63,58 +63,15 @@ class VlcPlayer(VideoPlayerPort):
         self._last_position = 0
         self._pending_seek = None
         
-        # Callbacks
+        # Callbacks - Initialize before binding events
+        self._on_position_changed = None
+        self._on_duration_changed = None
+        self._on_playback_state_changed = None
+        self._on_media_status_changed = None
+        self._on_error = None
+        
         print(f"DEBUG: VlcPlayer initialized with path: {full_vlc_path}")
         self._bind_events()
-
-    # ...
-
-    def _handle_playing(self, event):
-        if self._on_playback_state_changed:
-            self._on_playback_state_changed(PlaybackState.PLAYING)
-        # Also implies loaded
-        if self._on_media_status_changed:
-            self._on_media_status_changed(MediaStatus.LOADED)
-        
-        # Handle pending seek
-        if self._pending_seek is not None:
-             # Use seek method logic to reuse set_position
-             self.seek(self._pending_seek)
-             self._pending_seek = None
-
-    # ...
-
-    def load(self, path: str):
-        # Create new media
-        abs_path = os.path.abspath(path)
-        
-        if self._current_media:
-            self._current_media.release()
-            
-        self._current_media = self.instance.media_new(abs_path)
-        self.player.set_media(self._current_media)
-        self._pending_seek = None # Reset pending seek
-        self._last_position = 0
-
-    # ...
-
-    def seek(self, position: int):
-        # VLC requires playing state for set_time to work reliable
-        # If we are not playing, we schedule it
-        state = self.player.get_state()
-        # State 3 is Playing, 4 is Paused. 
-        # But easier to just store it if we just loaded?
-        # If the user drags slider while playing, we want immediate seek.
-        # If we are in "Opening" or "Stopped", wait.
-        
-        # We can try setting it. If it works, good.
-        # But robust way for initial load:
-        if state in (self.vlc.State.Playing, self.vlc.State.Paused):
-             self.player.set_time(position)
-        else:
-             self._pending_seek = position
-
-        
 
 
     def _bind_events(self):
