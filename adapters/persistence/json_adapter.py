@@ -25,13 +25,17 @@ class JsonPersistenceAdapter(PersistencePort):
             json.dump(data, f, indent=4)
 
     def save_progress(self, path: str, position: int):
+        # Normalize path to handle both forward and backward slashes consistently
+        normalized_path = os.path.normpath(path)
         data = self._load_data()
-        data[path] = position
+        data[normalized_path] = position
         self._save_data(data)
 
     def load_progress(self, path: str) -> int:
+        # Normalize path to handle both forward and backward slashes consistently
+        normalized_path = os.path.normpath(path)
         data = self._load_data()
-        return data.get(path, 0)
+        return data.get(normalized_path, 0)
 
     def save_setting(self, key: str, value: Any):
         data = self._load_data()

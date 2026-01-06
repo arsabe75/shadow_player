@@ -110,6 +110,10 @@ class VideoService(QObject):
 
     def play_at_index(self, index: int):
         if 0 <= index < len(self.playlist):
+            # Save progress of current video before switching to new one
+            if self.current_video:
+                self._save_current_progress()
+            
             self.current_index = index
             video = self.playlist[index]
             self._load_and_play(video)
@@ -119,10 +123,11 @@ class VideoService(QObject):
         self.current_video = video
         self.player.load(video.path)
         
-        # Check if we should start from beginning (flag set) or use saved progress
+        # If "Start from Beginning" is checked, start from 0
         if getattr(self, 'start_from_beginning', False):
             self._pending_initial_seek = 0
         else:
+            # Normal behavior: resume from saved progress if any
             saved_position = self.persistence.load_progress(video.path)
             if saved_position > 0:
                 self._pending_initial_seek = saved_position
