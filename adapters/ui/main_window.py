@@ -59,6 +59,9 @@ class MainWindow(QMainWindow):
         
         self.playlist_manager.back_clicked.connect(self.show_home)
         self.playlist_manager.playlist_started.connect(self.on_playlist_started)
+        
+        # Add videos to recent list as they start playing
+        self.service.video_started.connect(self.home_screen.add_recent_video)
 
     def show_playlist_manager(self):
         self.stack.setCurrentWidget(self.playlist_manager)

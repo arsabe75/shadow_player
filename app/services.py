@@ -16,6 +16,7 @@ class VideoService(QObject):
     loop_mode_changed = Signal(object) # LoopMode
     shuffle_mode_changed = Signal(bool)
     playback_finished = Signal() # Emitted when the entire playlist/session ends
+    video_started = Signal(str) # Emitted when a video starts playing (path)
     
     # Audio Signals
     volume_changed = Signal(int)
@@ -135,6 +136,9 @@ class VideoService(QObject):
                 self._pending_initial_seek = 0
             
         self.player.play()
+        
+        # Emit signal so MainWindow can add to recent videos
+        self.video_started.emit(video.path)
 
     def _on_video_ended(self):
         # Handle Loop One
