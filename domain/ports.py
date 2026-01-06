@@ -46,6 +46,15 @@ class VideoPlayerPort(ABC):
     @abstractmethod
     def get_audio_tracks(self) -> List[str]:
         pass
+
+    @abstractmethod
+    def set_volume(self, volume: int):
+        """Set volume 0-100"""
+        pass
+
+    @abstractmethod
+    def set_muted(self, muted: bool):
+        pass
         
     @abstractmethod
     def create_video_widget(self, parent: Any = None) -> Any:

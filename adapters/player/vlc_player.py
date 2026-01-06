@@ -259,6 +259,12 @@ class VlcPlayer(VideoPlayerPort):
                     res.append(name)
         return res
 
+    def set_volume(self, volume: int):
+        self.player.audio_set_volume(volume)
+
+    def set_muted(self, muted: bool):
+        self.player.audio_set_mute(muted)
+
     def get_audio_tracks(self) -> List[str]:
         res = ["Auto"]
         tracks = self.player.audio_get_track_description()

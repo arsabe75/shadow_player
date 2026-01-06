@@ -31,7 +31,16 @@ class VideoService(QObject):
         self.original_playlist: list[Video] = [] # For shuffle
         self.current_index = -1
         self.loop_mode = LoopMode.NO_LOOP
+        # Playlist State
+        self.playlist: list[Video] = []
+        self.original_playlist: list[Video] = [] # For shuffle
+        self.current_index = -1
+        self.loop_mode = LoopMode.NO_LOOP
         self.is_shuffled = False
+        
+        # Audio State
+        self.volume = 100
+        self.is_muted = False
         
         # Connect internal signal to handler on Main Thread
         self._internal_status_signal.connect(self._on_media_status_changed)
@@ -283,9 +292,36 @@ class VideoService(QObject):
         
         # Re-bind callbacks
         self._bind_player_callbacks()
+        
+        # Apply current state
+        self.player.set_volume(self.volume)
+        self.player.set_muted(self.is_muted)
 
     def seek(self, position: int):
         self.player.seek(position)
+        
+    def seek_relative(self, offset_ms: int):
+        current = self.get_position()
+        duration = self.get_duration()
+        if duration == 0: return
+        new_pos = max(0, min(duration, current + offset_ms))
+        self.seek(new_pos)
+
+    def seek_to_percentage(self, percent: int):
+        duration = self.get_duration()
+        if duration == 0: return
+        # Clamp percent 0-100
+        safe_percent = max(0, min(100, percent))
+        target_pos = int((safe_percent / 100.0) * duration)
+        self.seek(target_pos)
+
+    def set_volume(self, volume: int):
+        self.volume = max(0, min(100, volume))
+        self.player.set_volume(self.volume)
+
+    def toggle_mute(self):
+        self.is_muted = not self.is_muted
+        self.player.set_muted(self.is_muted)
         
     def create_video_widget(self, parent: Any = None) -> Any:
         return self.player.create_video_widget(parent)

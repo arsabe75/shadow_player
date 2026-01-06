@@ -145,6 +145,13 @@ class QtPlayer(QObject, VideoPlayerPort, metaclass=QtPlayerMeta):
             tracks.append(label)
         return tracks
 
+    def set_volume(self, volume: int):
+        # QAudioOutput volume is 0.0 to 1.0
+        self.audio.setVolume(volume / 100.0)
+
+    def set_muted(self, muted: bool):
+        self.audio.setMuted(muted)
+
     def get_audio_tracks(self) -> List[str]:
         tracks = ["Auto"]
         for i, track in enumerate(self.player.audioTracks()):

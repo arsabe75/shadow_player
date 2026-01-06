@@ -346,6 +346,9 @@ class PlayerScreen(QWidget):
         self.click_timer.setInterval(250)
         self.click_timer.setSingleShot(True)
         self.click_timer.timeout.connect(self._on_single_click_fallback)
+
+        # Set Focus Policy to receive key events
+        self.setFocusPolicy(Qt.StrongFocus)
         
         # Connect Service Signals
         self.service.position_changed.connect(self._on_position_changed)
@@ -710,6 +713,9 @@ class PlayerScreen(QWidget):
             elif event.type() == QEvent.Type.MouseButtonPress:
                 if event.button() == Qt.LeftButton:
                     self.click_timer.start()
+            elif event.type() == QEvent.Type.KeyPress:
+                self._handle_keypress(event)
+                return True
                 
         return super().eventFilter(obj, event)
 
@@ -720,3 +726,40 @@ class PlayerScreen(QWidget):
         if event.button() == Qt.LeftButton:
             self.toggle_fullscreen.emit()
             event.accept()
+
+    def keyPressEvent(self, event):
+        self._handle_keypress(event)
+
+    def _handle_keypress(self, event):
+        key = event.key()
+        
+        if key == Qt.Key_Space:
+            self.toggle_play()
+        elif key == Qt.Key_Left:
+            self.service.seek_relative(-5000)
+        elif key == Qt.Key_Right:
+            self.service.seek_relative(5000)
+        elif key == Qt.Key_J:
+            self.service.seek_relative(-10000)
+        elif key == Qt.Key_L:
+            self.service.seek_relative(10000)
+        elif key == Qt.Key_Up:
+            self.service.set_volume(self.service.volume + 5)
+        elif key == Qt.Key_Down:
+             self.service.set_volume(self.service.volume - 5)
+        elif key == Qt.Key_M:
+             self.service.toggle_mute()
+        elif key == Qt.Key_N:
+             self.service.play_next()
+        elif key == Qt.Key_P:
+             self.service.play_previous()
+        elif key == Qt.Key_S:
+             self.stop_video()
+        elif key == Qt.Key_Escape:
+             if self.fullscreen_mode:
+                 self.toggle_fullscreen.emit()
+        elif Qt.Key_0 <= key <= Qt.Key_9:
+             digit = key - Qt.Key_0
+             self.service.seek_to_percentage(digit * 10)
+        else:
+             super().keyPressEvent(event)

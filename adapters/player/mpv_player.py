@@ -181,6 +181,18 @@ class MpvPlayer(VideoPlayerPort):
             pass
         return tracks
 
+    def set_volume(self, volume: int):
+        try:
+            self.mpv.volume = volume
+        except:
+            pass
+
+    def set_muted(self, muted: bool):
+        try:
+            self.mpv.mute = muted
+        except:
+            pass
+
     def get_audio_tracks(self) -> List[str]:
         tracks = ["Auto"]
         try:
