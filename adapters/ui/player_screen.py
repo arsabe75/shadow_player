@@ -474,7 +474,21 @@ class PlayerScreen(QWidget):
         self.subtitle_combo = ComboBox()
         self.subtitle_combo.setMinimumWidth(200)
         tracks_layout.addWidget(self.subtitle_combo)
+        
         tracks_layout.addStretch()
+
+        # Volume Controls (Right aligned, below Playlist button)
+        self.volume_btn = ToolButton(FluentIcon.VOLUME)
+        self.volume_btn.setToolTip("Mute (M)")
+        self.volume_btn.clicked.connect(self.service.toggle_mute)
+        tracks_layout.addWidget(self.volume_btn)
+        
+        self.volume_slider = QSlider(Qt.Horizontal)
+        self.volume_slider.setRange(0, 100)
+        self.volume_slider.setFixedWidth(100)
+        self.volume_slider.setValue(100)
+        self.volume_slider.valueChanged.connect(self._on_volume_slider_changed)
+        tracks_layout.addWidget(self.volume_slider)
         
         bottom_layout.addLayout(tracks_layout)
 
@@ -531,8 +545,14 @@ class PlayerScreen(QWidget):
         
         self.service.playlist_updated.connect(self.update_navigation_controls)
         
+        # Volume Signals
+        self.service.volume_changed.connect(self._on_volume_changed_signal)
+        self.service.muted_changed.connect(self._on_muted_changed_signal)
+        
         # Initial state
         self.update_navigation_controls()
+        self._on_volume_changed_signal(self.service.volume)
+        self._on_muted_changed_signal(self.service.is_muted)
 
     def _on_back_clicked(self):
         self.service.close_video()
@@ -652,6 +672,31 @@ class PlayerScreen(QWidget):
         
         self.audio_combo.blockSignals(False)
         self.subtitle_combo.blockSignals(False)
+        
+    def _on_volume_slider_changed(self, value):
+        self.service.set_volume(value)
+        
+    def _on_volume_changed_signal(self, volume):
+        self.volume_slider.blockSignals(True)
+        self.volume_slider.setValue(volume)
+        self.volume_slider.blockSignals(False)
+        
+        # Update icon based on level if not explicitly muted
+        if not self.service.is_muted:
+            if volume == 0:
+                self.volume_btn.setIcon(FluentIcon.MUTE)
+            else:
+                self.volume_btn.setIcon(FluentIcon.VOLUME)
+
+    def _on_muted_changed_signal(self, is_muted):
+        self.volume_slider.blockSignals(True)
+        if is_muted:
+            self.volume_btn.setIcon(FluentIcon.MUTE)
+            self.volume_slider.setValue(0)
+        else:
+            self.volume_btn.setIcon(FluentIcon.VOLUME)
+            self.volume_slider.setValue(self.service.volume)
+        self.volume_slider.blockSignals(False)
 
     def update_navigation_controls(self):
         has_playlist = len(self.service.playlist) > 1

@@ -16,6 +16,12 @@ class VideoService(QObject):
     loop_mode_changed = Signal(object) # LoopMode
     shuffle_mode_changed = Signal(bool)
     playback_finished = Signal() # Emitted when the entire playlist/session ends
+    
+    # Audio Signals
+    volume_changed = Signal(int)
+    muted_changed = Signal(bool)
+
+    # Internal signal to bridge non-Qt threads (VLC) to Main Thread
 
     # Internal signal to bridge non-Qt threads (VLC) to Main Thread
     _internal_status_signal = Signal(object)
@@ -318,10 +324,18 @@ class VideoService(QObject):
     def set_volume(self, volume: int):
         self.volume = max(0, min(100, volume))
         self.player.set_volume(self.volume)
+        self.volume_changed.emit(self.volume)
+        
+        # If we change volume, we probably want to unmute if muted (optional, but common UX)
+        if self.is_muted and self.volume > 0:
+             self.is_muted = False
+             self.player.set_muted(False)
+             self.muted_changed.emit(False)
 
     def toggle_mute(self):
         self.is_muted = not self.is_muted
         self.player.set_muted(self.is_muted)
+        self.muted_changed.emit(self.is_muted)
         
     def create_video_widget(self, parent: Any = None) -> Any:
         return self.player.create_video_widget(parent)
