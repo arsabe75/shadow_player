@@ -289,6 +289,7 @@ class VlcPlayer(VideoPlayerPort):
     def set_video_output(self, widget: Any):
         win_id = int(widget.winId())
         if sys.platform.startswith('linux'):
+            print(f"DEBUG VLC: Setting XWindow to {win_id}")
             self.player.set_xwindow(win_id)
         elif sys.platform.startswith('win'):
             self.player.set_hwnd(win_id)

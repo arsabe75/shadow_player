@@ -395,13 +395,14 @@ class PlayerScreen(QWidget):
         
         self.video_widget = self.service.create_video_widget(self.video_container)
         self.video_widget.setStyleSheet("background-color: black;")
-        # Delay set_video_output on Linux to ensure widget has valid X11 window ID
-        # On Windows, it works immediately. On Linux, the widget must be shown first.
+        # On Linux, delay set_video_output until showEvent to ensure valid X11 window ID.
+        # On Windows, it works immediately.
         import sys as _sys
         if _sys.platform.startswith('linux'):
-            QTimer.singleShot(100, self._deferred_set_video_output)
+            self._video_output_set = False  # Will be set in showEvent
         else:
             self.service.set_video_output(self.video_widget)
+            self._video_output_set = True
         self.video_widget.installEventFilter(self)
         self.video_stack.addWidget(self.video_widget)
         
@@ -567,7 +568,17 @@ class PlayerScreen(QWidget):
     def _deferred_set_video_output(self):
         """Called after a delay on Linux to ensure widget has valid X11 ID."""
         if hasattr(self, 'video_widget') and self.video_widget:
+            win_id = int(self.video_widget.winId())
+            print(f"DEBUG: Setting video output with window ID: {win_id}")
             self.service.set_video_output(self.video_widget)
+            self._video_output_set = True
+
+    def showEvent(self, event):
+        """Handle widget becoming visible - set video output on Linux."""
+        super().showEvent(event)
+        if not getattr(self, '_video_output_set', True):
+            # Use a slightly longer delay AFTER showEvent to ensure X11 window is created
+            QTimer.singleShot(200, self._deferred_set_video_output)
 
     def _position_to_slider(self, position: int) -> int:
         """Convert position in ms to slider value (0-10000)."""

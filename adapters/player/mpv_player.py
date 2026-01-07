@@ -219,7 +219,9 @@ class MpvPlayer(VideoPlayerPort):
         return widget
 
     def set_video_output(self, widget: Any):
-        self.mpv.wid = int(widget.winId())
+        wid = int(widget.winId())
+        print(f"DEBUG MPV: Setting wid to {wid}")
+        self.mpv.wid = wid
 
     # Implement setters
     def set_on_position_changed(self, callback):
