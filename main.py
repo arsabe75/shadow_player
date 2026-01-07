@@ -36,6 +36,12 @@ from app.services import VideoService
 from adapters.ui.main_window import MainWindow
 
 def main():
+    if sys.platform == 'linux':
+        # Force XCB backend for reliable window embedding (VLC/MPV) on Linux 
+        # (especially needed on Wayland systems)
+        if "QT_QPA_PLATFORM" not in os.environ:
+             os.environ["QT_QPA_PLATFORM"] = "xcb"
+
     app = QApplication(sys.argv)
 
     # Composition Root
