@@ -78,7 +78,7 @@ class VlcPlayer(VideoPlayerPort):
         self._on_media_status_changed = None
         self._on_error = None
         
-        print(f"DEBUG: VlcPlayer initialized with path: {full_vlc_path}")
+        print(f"DEBUG: VlcPlayer initialized. Platform: {sys.platform}")
         self._bind_events()
 
 
