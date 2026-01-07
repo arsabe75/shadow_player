@@ -7,7 +7,7 @@ from typing import List, Any
 
 class MpvPlayer(VideoPlayerPort):
     def __init__(self, mpv_path: str = "mpv"):
-        # Add mpv folder to PATH so ctypes can find the DLL
+        # Add mpv folder to PATH so ctypes can find the DLL (Windows only)
         if sys.platform == 'win32':
             full_mpv_path = os.path.abspath(mpv_path)
             dll_loaded = False
@@ -29,30 +29,22 @@ class MpvPlayer(VideoPlayerPort):
             
             if not dll_loaded:
                 raise OSError(f"Could not find or load libmpv DLL in {full_mpv_path}. Expected one of: libmpv-2.dll, mpv-1.dll, mpv-2.dll, libmpv.dll")
-        else:
-            # On Linux, python-mpv usually finds the system library (libmpv.so) 
-            # as long as 'libmpv-dev' or similar is installed.
-            pass
         
         import mpv
+        self._mpv_module = mpv
         
-        try:
-            # On Linux, configure MPV for X11 embedding
-            if sys.platform.startswith('linux'):
-                self.mpv = mpv.MPV(
-                    vo='x11',           # Force X11 video output (most compatible for embedding)
-                    input_default_bindings=False,
-                    input_vo_keyboard=False
-                )
-            else:
-                self.mpv = mpv.MPV()
-            self.mpv['keep-open'] = 'yes'
-        except Exception as e:
-            print(f"MPV init error: {type(e).__name__}: {e}")
-            raise
+        # On Linux, we MUST create MPV with the wid parameter for embedding to work.
+        # We'll delay MPV creation until set_video_output is called.
+        # On Windows, we create it now and set wid later (which works).
+        if sys.platform.startswith('linux'):
+            self.mpv = None  # Will be created in set_video_output
+            self._mpv_initialized = False
+        else:
+            self._create_mpv_instance()
         
         # Internal state
         self._pending_seek = None
+        self._pending_path = None  # Store path if load() called before MPV created
         
         # Callbacks
         self._on_position_changed = None
@@ -61,7 +53,35 @@ class MpvPlayer(VideoPlayerPort):
         self._on_media_status_changed = None
         self._on_error = None
 
-        # setup observers
+    def _create_mpv_instance(self, wid=None):
+        """Create the MPV instance, optionally with a window ID for embedding."""
+        try:
+            if wid is not None:
+                print(f"DEBUG MPV: Creating MPV with wid={wid}")
+                self.mpv = self._mpv_module.MPV(
+                    wid=wid,
+                    input_default_bindings=False,
+                    input_vo_keyboard=False
+                )
+            else:
+                self.mpv = self._mpv_module.MPV()
+            
+            self.mpv['keep-open'] = 'yes'
+            self._setup_observers()
+            self._mpv_initialized = True
+            
+            # If there was a pending load, do it now
+            if self._pending_path:
+                path = self._pending_path
+                self._pending_path = None
+                self.load(path)
+                
+        except Exception as e:
+            print(f"MPV init error: {type(e).__name__}: {e}")
+            raise
+
+    def _setup_observers(self):
+        """Setup property observers for MPV events."""
         @self.mpv.property_observer('time-pos')
         def on_time_pos(name, value):
             if self._on_position_changed and value is not None:
@@ -99,7 +119,7 @@ class MpvPlayer(VideoPlayerPort):
                 if value:
                     self._on_media_status_changed(MediaStatus.BUFFERING)
                 else:
-                    # Assume loaded if not buffering, though strictly might be checking idle
+                    # Assume loaded if not buffering
                     if not self.mpv.idle_active:
                          self._on_media_status_changed(MediaStatus.LOADED)
 
@@ -109,6 +129,8 @@ class MpvPlayer(VideoPlayerPort):
                 self._on_media_status_changed(MediaStatus.End)
                 
     def _update_playback_state(self):
+        if not self.mpv:
+            return
         if self._on_playback_state_changed:
             if self.mpv.idle_active:
                 self._on_playback_state_changed(PlaybackState.STOPPED)
@@ -118,6 +140,11 @@ class MpvPlayer(VideoPlayerPort):
                 self._on_playback_state_changed(PlaybackState.PLAYING)
 
     def load(self, path: str):
+        if not self.mpv:
+            # MPV not yet created (Linux, waiting for set_video_output)
+            self._pending_path = path
+            return
+            
         # Notify loading
         if self._on_media_status_changed:
             self._on_media_status_changed(MediaStatus.LOADING)
@@ -126,24 +153,32 @@ class MpvPlayer(VideoPlayerPort):
         self.mpv.pause = True
 
     def play(self):
-        self.mpv.pause = False
+        if self.mpv:
+            self.mpv.pause = False
 
     def pause(self):
-        self.mpv.pause = True
+        if self.mpv:
+            self.mpv.pause = True
 
     def stop(self):
-        try:
-            self.mpv.stop()
-        except:
-            pass
+        if self.mpv:
+            try:
+                self.mpv.stop()
+            except:
+                pass
 
     def seek(self, position: int):
+        if not self.mpv:
+            self._pending_seek = position
+            return
         try:
             self.mpv.seek(position / 1000.0, reference="absolute")
         except Exception:
             self._pending_seek = position
 
     def get_duration(self) -> int:
+        if not self.mpv:
+            return 0
         try:
             d = self.mpv.duration
             return int(d * 1000) if d else 0
@@ -151,6 +186,8 @@ class MpvPlayer(VideoPlayerPort):
             return 0
 
     def get_position(self) -> int:
+        if not self.mpv:
+            return 0
         try:
             p = self.mpv.time_pos
             return int(p * 1000) if p else 0
@@ -158,6 +195,8 @@ class MpvPlayer(VideoPlayerPort):
             return 0
 
     def set_subtitle_track(self, index: int):
+        if not self.mpv:
+            return
         if index == 0:
             self.mpv.sid = 'auto'
         elif index == 1:
@@ -172,6 +211,8 @@ class MpvPlayer(VideoPlayerPort):
                 pass
 
     def set_audio_track(self, index: int):
+        if not self.mpv:
+            return
         if index == 0:
             self.mpv.aid = 'auto'
         else:
@@ -185,6 +226,8 @@ class MpvPlayer(VideoPlayerPort):
         
     def get_subtitle_tracks(self) -> List[str]:
         tracks = ["Auto", "Off"]
+        if not self.mpv:
+            return tracks
         try:
             for t in self.mpv.track_list:
                 if t['type'] == 'sub':
@@ -196,19 +239,23 @@ class MpvPlayer(VideoPlayerPort):
         return tracks
 
     def set_volume(self, volume: int):
-        try:
-            self.mpv.volume = volume
-        except:
-            pass
+        if self.mpv:
+            try:
+                self.mpv.volume = volume
+            except:
+                pass
 
     def set_muted(self, muted: bool):
-        try:
-            self.mpv.mute = muted
-        except:
-            pass
+        if self.mpv:
+            try:
+                self.mpv.mute = muted
+            except:
+                pass
 
     def get_audio_tracks(self) -> List[str]:
         tracks = ["Auto"]
+        if not self.mpv:
+            return tracks
         try:
             for t in self.mpv.track_list:
                 if t['type'] == 'audio':
@@ -228,8 +275,19 @@ class MpvPlayer(VideoPlayerPort):
 
     def set_video_output(self, widget: Any):
         wid = int(widget.winId())
-        print(f"DEBUG MPV: Setting wid to {wid}")
-        self.mpv.wid = wid
+        print(f"DEBUG MPV: set_video_output called with wid={wid}")
+        
+        if sys.platform.startswith('linux'):
+            # On Linux, create MPV now with the wid for proper embedding
+            if not self._mpv_initialized:
+                self._create_mpv_instance(wid=wid)
+            else:
+                # If already initialized, just update wid
+                self.mpv.wid = wid
+        else:
+            # On Windows, setting wid after creation works
+            if self.mpv:
+                self.mpv.wid = wid
 
     # Implement setters
     def set_on_position_changed(self, callback):

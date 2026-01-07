@@ -63,12 +63,7 @@ class VlcPlayer(VideoPlayerPort):
             "--quiet",
             "--no-video-deco"
         ]
-        # On Linux, force xcb video output for proper embedding
-        if sys.platform.startswith('linux'):
-            vlc_args.extend([
-                "--vout=xcb_x11",  # Force X11 video output
-                "--no-xlib"        # Prevent VLC from creating its own X11 connection
-            ])
+        # On Linux, we rely on set_xwindow() to embed; no special vout needed.
         self.instance = self.vlc.Instance(*vlc_args)
         self.player = self.instance.media_player_new()
         self.event_manager = self.player.event_manager()
