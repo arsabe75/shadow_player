@@ -395,7 +395,13 @@ class PlayerScreen(QWidget):
         
         self.video_widget = self.service.create_video_widget(self.video_container)
         self.video_widget.setStyleSheet("background-color: black;")
-        self.service.set_video_output(self.video_widget)
+        # Delay set_video_output on Linux to ensure widget has valid X11 window ID
+        # On Windows, it works immediately. On Linux, the widget must be shown first.
+        import sys as _sys
+        if _sys.platform.startswith('linux'):
+            QTimer.singleShot(100, self._deferred_set_video_output)
+        else:
+            self.service.set_video_output(self.video_widget)
         self.video_widget.installEventFilter(self)
         self.video_stack.addWidget(self.video_widget)
         
@@ -557,6 +563,11 @@ class PlayerScreen(QWidget):
     def _on_back_clicked(self):
         self.service.close_video()
         self.back_clicked.emit()
+
+    def _deferred_set_video_output(self):
+        """Called after a delay on Linux to ensure widget has valid X11 ID."""
+        if hasattr(self, 'video_widget') and self.video_widget:
+            self.service.set_video_output(self.video_widget)
 
     def _position_to_slider(self, position: int) -> int:
         """Convert position in ms to slider value (0-10000)."""
