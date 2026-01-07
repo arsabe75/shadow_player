@@ -1,4 +1,5 @@
 import os
+import sys
 import ctypes
 from domain.ports import VideoPlayerPort
 from domain.models import PlaybackState, MediaStatus
