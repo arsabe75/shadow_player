@@ -58,11 +58,18 @@ class VlcPlayer(VideoPlayerPort):
         # --video-on-top: Keep video on top
         # --drawable-hwnd: For Windows native rendering
         # Background color in VLC is set by setting the video's background
-        self.instance = self.vlc.Instance(
+        vlc_args = [
             "--no-video-title-show", 
             "--quiet",
             "--no-video-deco"
-        )
+        ]
+        # On Linux, force xcb video output for proper embedding
+        if sys.platform.startswith('linux'):
+            vlc_args.extend([
+                "--vout=xcb_x11",  # Force X11 video output
+                "--no-xlib"        # Prevent VLC from creating its own X11 connection
+            ])
+        self.instance = self.vlc.Instance(*vlc_args)
         self.player = self.instance.media_player_new()
         self.event_manager = self.player.event_manager()
         

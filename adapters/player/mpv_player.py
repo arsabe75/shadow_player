@@ -37,7 +37,15 @@ class MpvPlayer(VideoPlayerPort):
         import mpv
         
         try:
-            self.mpv = mpv.MPV()
+            # On Linux, configure MPV for X11 embedding
+            if sys.platform.startswith('linux'):
+                self.mpv = mpv.MPV(
+                    vo='x11',           # Force X11 video output (most compatible for embedding)
+                    input_default_bindings=False,
+                    input_vo_keyboard=False
+                )
+            else:
+                self.mpv = mpv.MPV()
             self.mpv['keep-open'] = 'yes'
         except Exception as e:
             print(f"MPV init error: {type(e).__name__}: {e}")
