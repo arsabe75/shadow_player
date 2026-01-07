@@ -268,9 +268,13 @@ class MpvPlayer(VideoPlayerPort):
         
     def create_video_widget(self, parent: Any = None) -> Any:
         from PySide6.QtWidgets import QWidget
+        from PySide6.QtCore import Qt
         widget = QWidget(parent)
         widget.setStyleSheet("background-color: black;")
         widget.setObjectName("MpvVideoWidget")
+        # Force creation of a native X11 window - required for VLC/MPV embedding
+        widget.setAttribute(Qt.WA_NativeWindow, True)
+        widget.setAttribute(Qt.WA_DontCreateNativeAncestors, False)
         return widget
 
     def set_video_output(self, widget: Any):

@@ -329,6 +329,9 @@ class VlcPlayer(VideoPlayerPort):
         from PySide6.QtCore import Qt
         
         frame = QFrame(parent)
+        # Force creation of a native X11 window - required for VLC embedding on Linux
+        frame.setAttribute(Qt.WA_NativeWindow, True)
+        frame.setAttribute(Qt.WA_DontCreateNativeAncestors, False)
         # Disable transparency attributes - critical for VLC with FramelessWindow
         frame.setAttribute(Qt.WA_TranslucentBackground, False)
         frame.setAttribute(Qt.WA_NoSystemBackground, False)
