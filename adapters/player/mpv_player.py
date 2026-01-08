@@ -33,6 +33,10 @@ class MpvPlayer(VideoPlayerPort):
         import mpv
         self._mpv_module = mpv
         
+        # Internal state - must be initialized before _create_mpv_instance() is called
+        self._pending_seek = None
+        self._pending_path = None  # Store path if load() called before MPV created
+        
         # On Linux, we MUST create MPV with the wid parameter for embedding to work.
         # We'll delay MPV creation until set_video_output is called.
         # On Windows, we create it now and set wid later (which works).
@@ -41,10 +45,6 @@ class MpvPlayer(VideoPlayerPort):
             self._mpv_initialized = False
         else:
             self._create_mpv_instance()
-        
-        # Internal state
-        self._pending_seek = None
-        self._pending_path = None  # Store path if load() called before MPV created
         
         # Callbacks
         self._on_position_changed = None
