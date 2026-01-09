@@ -260,6 +260,9 @@ class PlaylistPanel(CardWidget):
     def save_playlist(self):
         path, _ = QFileDialog.getSaveFileName(self, "Save Playlist", "", "M3U Playlist (*.m3u)")
         if path:
+            # En Linux, QFileDialog no agrega la extensión automáticamente
+            if not path.lower().endswith('.m3u'):
+                path += '.m3u'
             self.service.save_playlist_to_file(path)
 
     def toggle_shuffle(self):

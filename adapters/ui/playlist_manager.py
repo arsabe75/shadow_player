@@ -134,6 +134,9 @@ class PlaylistManagerScreen(QWidget):
             self, "Save Playlist", "", "M3U Playlist (*.m3u)"
         )
         if path:
+            # En Linux, QFileDialog no agrega la extensión automáticamente
+            if not path.lower().endswith('.m3u'):
+                path += '.m3u'
             # We temporarily set the service's playlist to save it (or expose a static helper, but service is easier)
             # Actually, `save_playlist_to_file` reads `self.playlist`. 
             # Let's make a temporary helper or slightly modify service method? 
