@@ -53,3 +53,11 @@ mpv/
 
 # vlc
 vlc/
+
+# Telegram-specific secrets
+telegram_session/
+*.session
+_credentials.py
+credentials.enc
+tdlib_db/
+*.enc
