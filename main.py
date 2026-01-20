@@ -47,7 +47,8 @@ def main():
     # Composition Root
     persistence_adapter = JsonPersistenceAdapter()
     
-    player_engine = persistence_adapter.load_setting("player_engine", "qt")
+    player_engine = "mpv" # FORCED DEBUG
+    print(f"DEBUG: Active Player Engine: {player_engine}")
     
     if player_engine == "mpv":
         from adapters.player.mpv_player import MpvPlayer

@@ -168,10 +168,12 @@ class TelegramAsyncWorker(QObject):
             print(f"[TelegramWorker] Failed to start proxy: {e}")
 
         while self._running:
-            # Get task from queue with timeout
+            # Get task from queue WITHOUT blocking to allow event loop to process HTTP requests
             try:
-                task = self._task_queue.get(timeout=0.1)
+                task = self._task_queue.get_nowait()
             except Empty:
+                # Yield control to event loop - this allows aiohttp to process requests
+                await asyncio.sleep(0.05)
                 continue
             
             if task.operation == TelegramOp.STOP:
@@ -196,26 +198,31 @@ class TelegramAsyncWorker(QObject):
              await self._client.connect()
         
         if task.operation == TelegramOp.GET_STREAM_URL:
+            if not self._proxy:
+                raise RuntimeError("Streaming proxy not initialized - cannot generate stream URL")
+            
             message_id = task.kwargs['message_id']
             chat_id = task.kwargs['chat_id']
-            # We need file size for the proxy
-            # Fetch message to get size? Or allow 0 and let proxy fetch?
-            # Proxy needs it for Content-Length.
-            # Let's fetch message quickly.
+            
+            # Fetch message to get file size
             msgs = await self._client.get_messages(chat_id, ids=[message_id])
-            if msgs and msgs[0]:
-                msg = msgs[0]
-                size = 0
-                if hasattr(msg, 'file') and msg.file:
-                    size = msg.file.size
-                elif msg.document:
-                    size = msg.document.size
-                elif msg.video:
-                    size = msg.video.size
-                
-                if self._proxy:
-                    return self._proxy.get_stream_url(message_id, chat_id, size, message_obj=msg)
-            return None
+            if not msgs or not msgs[0]:
+                raise ValueError(f"Message {message_id} not found in chat {chat_id}")
+            
+            msg = msgs[0]
+            size = 0
+            if hasattr(msg, 'file') and msg.file:
+                size = msg.file.size
+            elif msg.document:
+                size = msg.document.size
+            elif msg.video:
+                size = msg.video.size
+            
+            if size == 0:
+                raise ValueError(f"Could not determine file size for message {message_id}")
+            
+            print(f"[TelegramWorker] Stream URL generated for {message_id}, size: {size}")
+            return self._proxy.get_stream_url(message_id, chat_id, size, message_obj=msg)
 
         if task.operation == TelegramOp.GET_QR_CODE:
             # Check if already authorized

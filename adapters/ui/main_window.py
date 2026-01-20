@@ -304,25 +304,31 @@ class MainWindow(QMainWindow):
         """Play a video from Telegram."""
         print(f"[MainWindow] Requesting playback for message {message.id} in chat {chat_id}")
         
+        # Set loading flag IMMEDIATELY to block spurious back clicks during URL fetch
+        self.service._is_loading = True
+        
         from adapters.telegram.async_worker import get_telegram_worker, TelegramOp
+        from PySide6.QtCore import QTimer
         
         def on_url_ready(success, result):
             if success and result:
                 url = result
                 print(f"[MainWindow] Playback URL: {url}")
-                # Play using service
-                # We need to create a Video object or just pass path
-                # service.play_files expects paths.
                 
                 # Remember current screen before switching
                 self._previous_screen = self.stack.currentWidget()
                 
+                # Start playback (this will manage _is_loading flag internally)
                 self.service.play_files([url])
-                self.stack.setCurrentWidget(self.player_screen)
+                
+                # Small delay to let MPV establish connection before UI transition
+                QTimer.singleShot(100, lambda: self.stack.setCurrentWidget(self.player_screen))
             else:
-                 InfoBar.error(
+                # Clear loading flag on error
+                self.service._is_loading = False
+                InfoBar.error(
                     title="Error",
-                    content="No se pudo obtener el enlace de streaming.",
+                    content=f"No se pudo obtener el enlace de streaming: {result}",
                     parent=self,
                     position=InfoBarPosition.TOP
                 )

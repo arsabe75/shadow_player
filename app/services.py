@@ -49,6 +49,9 @@ class VideoService(QObject):
         self.volume = 100
         self.is_muted = False
         
+        # Loading protection flag - prevents close_video during stream initialization
+        self._is_loading = False
+        
         # Connect internal signal to handler on Main Thread
         self._internal_status_signal.connect(self._on_media_status_changed)
         
@@ -72,6 +75,8 @@ class VideoService(QObject):
         if status == MediaStatus.End:
              self._on_video_ended()
         elif status == MediaStatus.LOADED:
+            # Clear loading flag - video is now ready
+            self._is_loading = False
             if hasattr(self, '_pending_initial_seek') and self._pending_initial_seek > 0:
                  from PySide6.QtCore import QTimer
                  QTimer.singleShot(250, self._execute_initial_seek)
@@ -88,8 +93,19 @@ class VideoService(QObject):
     def play_files(self, paths: list[str], start_from_beginning: bool = False):
         """Replaces current playlist with new files and plays the first one."""
         self.start_from_beginning = start_from_beginning
-        self.cleanup_playlist()
+        
+        # Save progress of current video if any (without stopping)
+        if self.current_video:
+            self._save_current_progress()
+        
+        # Clear playlist silently (without emitting signals that could interfere)
+        self.playlist.clear()
+        self.original_playlist.clear()
+        self.current_index = -1
+        
+        # Add new files
         self.add_files(paths)
+        
         if self.playlist:
             self.play_at_index(0)
 
@@ -121,8 +137,19 @@ class VideoService(QObject):
             self.playlist_updated.emit() # update UI for active item
 
     def _load_and_play(self, video: Video):
+        # Set loading flag to prevent spurious close_video calls
+        self._is_loading = True
         self.current_video = video
         self.player.load(video.path)
+        
+        # Timeout to clear loading flag after 30 seconds in case LOADED never fires
+        # (Large videos may take time to download moov atom metadata)
+        from PySide6.QtCore import QTimer
+        def clear_loading_timeout():
+            if self._is_loading:
+                print("DEBUG VideoService: Loading timeout after 30s - clearing _is_loading flag")
+                self._is_loading = False
+        QTimer.singleShot(30000, clear_loading_timeout)
         
         # If "Start from Beginning" is checked, start from 0
         if getattr(self, 'start_from_beginning', False):
@@ -291,6 +318,11 @@ class VideoService(QObject):
 
     def close_video(self, reset_progress: bool = False):
         """Stops the video, saves progress, and releases the current video context."""
+        # Don't interrupt during stream loading - prevents race condition
+        if self._is_loading:
+            print("DEBUG VideoService: close_video blocked - stream is loading")
+            return
+            
         if self.current_video:
             if reset_progress:
                 self.persistence.save_progress(self.current_video.path, 0)

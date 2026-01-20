@@ -56,16 +56,26 @@ class MpvPlayer(VideoPlayerPort):
     def _create_mpv_instance(self, wid=None):
         """Create the MPV instance, optionally with a window ID for embedding."""
         try:
+            # Common options for all platforms - disable hooks that interfere with HTTP streaming
+            common_opts = {
+                'log_handler': print,
+                'ytdl': False,  # Disable youtube-dl hook - interferes with HTTP URLs
+                'config': False,  # Don't load user mpv.conf - may have scripts/hooks
+                'input_default_bindings': False,
+                'input_vo_keyboard': False,
+            }
+            
             if wid is not None:
                 print(f"DEBUG MPV: Creating MPV with wid={wid}")
                 self.mpv = self._mpv_module.MPV(
                     wid=wid,
-                    input_default_bindings=False,
-                    input_vo_keyboard=False
+                    **common_opts
                 )
             else:
-                self.mpv = self._mpv_module.MPV()
+                print("DEBUG MPV: Creating MPV without wid (Windows)")
+                self.mpv = self._mpv_module.MPV(**common_opts)
             
+            self.mpv.set_loglevel('debug')
             self.mpv['keep-open'] = 'yes'
             self._setup_observers()
             self._mpv_initialized = True
@@ -150,7 +160,8 @@ class MpvPlayer(VideoPlayerPort):
             self._on_media_status_changed(MediaStatus.LOADING)
         
         self.mpv.play(path)
-        self.mpv.pause = True
+        # Note: Don't pause here - let the service control playback state
+        # This prevents race condition with streaming URLs
 
     def play(self):
         if self.mpv:
@@ -161,6 +172,11 @@ class MpvPlayer(VideoPlayerPort):
             self.mpv.pause = True
 
     def stop(self):
+        # Debug: trace where stop is called from
+        import traceback
+        print("DEBUG MPV: stop() called from Python:")
+        traceback.print_stack(limit=8)
+        
         if self.mpv:
             try:
                 self.mpv.stop()

@@ -118,6 +118,8 @@ class StreamingProxy:
         
         # Parse Range header
         range_header = request.headers.get('Range', '')
+        print(f"[Proxy] INCOMING REQUEST: {stream_id} | Range: {range_header} | Size: {file_size} | CachedMsg: {message is not None}")
+        
         start = 0
         end = file_size - 1
         
@@ -158,11 +160,27 @@ class StreamingProxy:
              if mime:
                  response.headers['Content-Type'] = mime
         
-        # print(f"[Proxy] Response Headers: Content-Type={response.headers['Content-Type']}, Content-Length={content_length}")
+        # Explicitly set Content-Length and Accept-Ranges
+        response.content_length = content_length
+        response.headers['Accept-Ranges'] = 'bytes'
         
-        await response.prepare(request)
+        print(f"[Proxy] Response Headers: Content-Type={response.headers['Content-Type']}, Content-Length={content_length}")
         
-        # print(f"[Proxy] Starting stream for {stream_id} range={start}-{end}")
+        try:
+            await response.prepare(request)
+            # Small delay to ensure client is ready to receive data
+            await asyncio.sleep(0.05)
+        except (ConnectionResetError, BrokenPipeError) as e:
+             # Client disconnected before we could send headers
+             print(f"[Proxy] Client disconnected during header send: {e}")
+             return response
+        except Exception as e:
+             if "Cannot write to closing transport" in str(e):
+                  print(f"[Proxy] Client disconnected during header send (transport closed).")
+                  return response
+             raise e
+        
+        print(f"[Proxy] Starting stream for {stream_id} range={start}-{end}")
         
         # Stream data from Telegram
         try:
@@ -174,7 +192,7 @@ class StreamingProxy:
             # Smaller chunk size for better MPV compatibility and seeking
             chunk_size = 64 * 1024  
             
-            # print(f"[Proxy] Downloading media from message {message.id}...")
+            print(f"[Proxy] Downloading media from message {message.id}...")
             # Use iter_download
             async for chunk in self.client.iter_download(
                 message.media,
@@ -198,8 +216,9 @@ class StreamingProxy:
                      print(f"[Proxy] Client disconnected (normal): {e}")
                      break
                  except Exception as e:
-                     if "Cannot write to closing transport" in str(e):
-                         print(f"[Proxy] Client disconnected (transport closed).")
+                     if "Cannot write to closing transport" in str(e) or "ClientConnectionResetError" in str(type(e)):
+                         # Squelch this common aiohttp error
+                         print(f"[Proxy] Client connection closed (expected).")
                          break
                      print(f"[Proxy] Client disconnected during write: {e}")
                      break

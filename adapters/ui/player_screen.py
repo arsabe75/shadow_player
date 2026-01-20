@@ -546,7 +546,8 @@ class PlayerScreen(QWidget):
                 print(f"DEBUG: Failed to apply colorkey: {e}")
 
     def setup_connections(self):
-        self.back_button.clicked.connect(self._on_back_clicked)
+        # back_button signal is managed by showEvent/hideEvent
+        self._back_button_connected = False
         
         self.play_button.clicked.connect(self.toggle_play)
         self.stop_button.clicked.connect(self.stop_video)
@@ -571,8 +572,37 @@ class PlayerScreen(QWidget):
         self._on_volume_changed_signal(self.service.volume)
         self._on_muted_changed_signal(self.service.is_muted)
 
+    def showEvent(self, event):
+        """Called when screen becomes visible - connect back button signal."""
+        super().showEvent(event)
+        # Connect signal only if not already connected
+        if not getattr(self, '_back_button_connected', False):
+            self.back_button.clicked.connect(self._on_back_clicked)
+            self._back_button_connected = True
+            print("DEBUG PlayerScreen: showEvent - back_button signal CONNECTED")
+    
+    def hideEvent(self, event):
+        """Called when screen becomes hidden - disconnect back button signal."""
+        super().hideEvent(event)
+        # Disconnect signal to prevent spurious clicks
+        if getattr(self, '_back_button_connected', False):
+            try:
+                self.back_button.clicked.disconnect(self._on_back_clicked)
+                self._back_button_connected = False
+                print("DEBUG PlayerScreen: hideEvent - back_button signal DISCONNECTED")
+            except RuntimeError:
+                # Signal was not connected
+                pass
+
     def _on_back_clicked(self):
-        self.service.close_video()
+        # Block back navigation completely during loading to prevent race condition
+        if getattr(self.service, '_is_loading', False):
+            print("DEBUG PlayerScreen: _on_back_clicked blocked - stream is loading")
+            return
+            
+        # Only close video if there is actually one playing
+        if self.service.current_video:
+            self.service.close_video()
         self.back_clicked.emit()
 
     def _position_to_slider(self, position: int) -> int:

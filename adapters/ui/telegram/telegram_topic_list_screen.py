@@ -49,7 +49,7 @@ class TelegramTopicListScreen(QWidget):
         
         # Loading
         self.loading_overlay = QFrame(self)
-        self.loading_overlay.setStyleSheet("background-color: rgba(255, 255, 255, 0.8);")
+        self.loading_overlay.setStyleSheet("background-color: transparent;")
         self.loading_overlay.hide()
         
         l_layout = QVBoxLayout(self.loading_overlay)
