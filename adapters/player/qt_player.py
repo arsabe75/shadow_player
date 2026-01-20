@@ -99,7 +99,11 @@ class QtPlayer(QObject, VideoPlayerPort, metaclass=QtPlayerMeta):
 
     def load(self, path: str):
         self.pending_position = None # Clear previous pending
-        self.player.setSource(QUrl.fromLocalFile(path))
+        # Support HTTP URLs for streaming (Telegram) and local files
+        if path.startswith('http://') or path.startswith('https://'):
+            self.player.setSource(QUrl(path))
+        else:
+            self.player.setSource(QUrl.fromLocalFile(path))
 
     def play(self):
         self.player.play()

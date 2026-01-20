@@ -1,11 +1,12 @@
 from PySide6.QtWidgets import QStackedWidget, QVBoxLayout, QWidget, QMainWindow
 from PySide6.QtCore import Qt, QThread, Signal, QObject
 from PySide6.QtGui import QKeyEvent, QCloseEvent
-from qfluentwidgets import setTheme, Theme, StateToolTip
+from qfluentwidgets import setTheme, Theme, StateToolTip, InfoBar, InfoBarPosition
 from adapters.ui.home_screen import HomeScreen
 from adapters.ui.player_screen import PlayerScreen
 from adapters.ui.playlist_manager import PlaylistManagerScreen
 from app.services import VideoService
+from pathlib import Path
 
 
 class PlayerInitWorker(QObject):
@@ -75,6 +76,12 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.home_screen)
         self.stack.addWidget(self.player_screen)
         self.stack.addWidget(self.playlist_manager)
+        
+        # Telegram screens (lazy initialization)
+        self._telegram_login_screen = None
+        self._telegram_main_screen = None
+        self._telegram_storage_screen = None
+        self._telegram_initialized = False
 
         self.setup_connections()
 
@@ -82,8 +89,9 @@ class MainWindow(QMainWindow):
         self.home_screen.video_selected.connect(self.on_video_selected)
         self.home_screen.files_selected.connect(self.on_files_selected)
         self.home_screen.lists_clicked.connect(self.show_playlist_manager)
+        self.home_screen.telegram_clicked.connect(self.show_telegram)
 
-        self.player_screen.back_clicked.connect(self.show_home)
+        self.player_screen.back_clicked.connect(self.show_previous_screen)
         self.player_screen.toggle_fullscreen.connect(self.toggle_fullscreen_state)
         
         self.playlist_manager.back_clicked.connect(self.show_home)
@@ -91,6 +99,279 @@ class MainWindow(QMainWindow):
         
         # Add videos to recent list as they start playing
         self.service.video_started.connect(self.home_screen.add_recent_video)
+    
+    def show_telegram(self):
+        """Navigate to Telegram screen (login if not authenticated)."""
+        # Show loading indicator immediately
+        if hasattr(self, '_telegram_loading_tip') and self._telegram_loading_tip:
+            return  # Already loading
+        
+        from PySide6.QtWidgets import QApplication
+        
+        self._telegram_loading_tip = StateToolTip(
+            "Telegram",
+            "Inicializando...",
+            self
+        )
+        self._telegram_loading_tip.move(
+            self.width() // 2 - self._telegram_loading_tip.width() // 2,
+            20
+        )
+        self._telegram_loading_tip.show()
+        
+        # Force UI update to show the tooltip
+        QApplication.processEvents()
+        
+        # Initialize screens if needed (this may take a moment)
+        if not self._telegram_initialized:
+            self._init_telegram_screens()
+        
+        # Hide loading
+        if hasattr(self, '_telegram_loading_tip') and self._telegram_loading_tip:
+            self._telegram_loading_tip.setContent("Listo")
+            self._telegram_loading_tip.setState(True)
+            self._telegram_loading_tip.close()
+            self._telegram_loading_tip = None
+        
+        if not self._telegram_initialized:
+            return
+        
+        # Check authentication status via worker
+        # We start with the login screen (which will show loading)
+        # It will either auto-login (if authorized) or show QR
+        self.stack.setCurrentWidget(self._telegram_login_screen)
+        
+        # Trigger auth check
+        if self._telegram_login_screen:
+            self._telegram_login_screen.check_auth()
+    
+    def _on_telegram_login_success(self):
+        """Called when Telegram login is successful."""
+        InfoBar.success(
+            title="Telegram",
+            content="¡Sesión iniciada correctamente!",
+            parent=self,
+            position=InfoBarPosition.TOP
+        )
+        self._show_telegram_main()
+    
+    def _init_telegram_screens(self):
+        """Initialize Telegram screens lazily."""
+        try:
+            from adapters.security.secure_storage import SecureStorage
+            from adapters.telegram.favorites_manager import FavoritesManager
+            from adapters.telegram.recent_videos import RecentVideosManager
+            from adapters.ui.telegram.telegram_main_screen import TelegramMainScreen
+            from adapters.ui.telegram.telegram_login_screen import TelegramLoginScreen
+            from adapters.ui.telegram.storage_settings_screen import StorageSettingsScreen
+            from adapters.telegram.cache_manager import TelegramCacheManager, CacheSettings
+            from adapters.telegram.tdlib_client import TDLibClient
+            
+            # Setup data directories
+            data_dir = Path.home() / ".shadow_player"
+            cache_dir = data_dir / "telegram_cache"
+            tdlib_dir = data_dir / "tdlib"
+            
+            # Initialize managers
+            self._secure_storage = SecureStorage(data_dir)
+            self._tdlib_client = TDLibClient(tdlib_dir, self._secure_storage)
+            favorites_manager = FavoritesManager(self._secure_storage)
+            recent_videos_manager = RecentVideosManager(self._secure_storage)
+            cache_manager = TelegramCacheManager(cache_dir, CacheSettings())
+            
+            # Create login screen
+            self._telegram_login_screen = TelegramLoginScreen(self._tdlib_client)
+            self._telegram_login_screen.back_requested.connect(self.show_home)
+            self._telegram_login_screen.login_successful.connect(self._on_telegram_login_success)
+            self.stack.addWidget(self._telegram_login_screen)
+            
+            # Create main screen
+            self._telegram_main_screen = TelegramMainScreen(
+                favorites_manager,
+                recent_videos_manager
+            )
+            self._telegram_main_screen.back_requested.connect(self.show_home)
+            self._telegram_main_screen.storage_requested.connect(self._show_telegram_storage)
+            self._telegram_main_screen.logout_requested.connect(self._on_telegram_logout)
+            self.stack.addWidget(self._telegram_main_screen)
+            
+            # Create storage screen
+            self._telegram_storage_screen = StorageSettingsScreen(cache_manager)
+            self._telegram_storage_screen.back_requested.connect(self._show_telegram_main)
+            self.stack.addWidget(self._telegram_storage_screen)
+            
+            # Create browse screen
+            from adapters.ui.telegram.telegram_browse_screen import TelegramBrowseScreen
+            self._telegram_browse_screen = TelegramBrowseScreen(self._tdlib_client)
+            self._telegram_browse_screen.back_requested.connect(self._show_telegram_main)
+            self._telegram_browse_screen.chat_selected.connect(self._show_telegram_chat_videos)
+            self.stack.addWidget(self._telegram_browse_screen)
+
+            # Create video list screen
+            from adapters.ui.telegram.telegram_video_list_screen import TelegramVideoListScreen
+            self._telegram_video_list_screen = TelegramVideoListScreen()
+            self._telegram_video_list_screen.back_requested.connect(self._handle_telegram_video_back)
+            self._telegram_video_list_screen.video_selected.connect(self._play_telegram_video)
+            self.stack.addWidget(self._telegram_video_list_screen)
+            
+            # Create topic list screen
+            from adapters.ui.telegram.telegram_topic_list_screen import TelegramTopicListScreen
+            self._telegram_topic_list_screen = TelegramTopicListScreen()
+            self._telegram_topic_list_screen.back_requested.connect(self._show_telegram_browse)
+            self._telegram_topic_list_screen.topic_selected.connect(self._show_telegram_topic_videos)
+            self.stack.addWidget(self._telegram_topic_list_screen)
+            
+            # Connect main screen signals
+            self._telegram_main_screen.browse_requested.connect(self._show_telegram_browse)
+            
+            self._telegram_initialized = True
+            
+        except ImportError as e:
+            InfoBar.error(
+                title="Missing Dependencies",
+                content=f"Install required packages: pip install -r requirements.txt ({e})",
+                parent=self,
+                position=InfoBarPosition.TOP,
+                duration=5000
+            )
+        except Exception as e:
+            InfoBar.error(
+                title="Telegram Error",
+                content=str(e),
+                parent=self,
+                position=InfoBarPosition.TOP
+            )
+    
+    def _show_telegram_storage(self):
+        """Show Telegram storage settings screen."""
+        if self._telegram_storage_screen:
+            self._telegram_storage_screen.refresh()
+            self.stack.setCurrentWidget(self._telegram_storage_screen)
+    
+    def _show_telegram_main(self):
+        """Navigate back to Telegram main screen."""
+        if self._telegram_main_screen:
+            self._telegram_main_screen.refresh()
+            self.stack.setCurrentWidget(self._telegram_main_screen)
+
+    def _show_telegram_browse(self):
+        """Show Telegram chat browser."""
+        if hasattr(self, '_telegram_browse_screen'):
+            self.stack.setCurrentWidget(self._telegram_browse_screen)
+            self._telegram_browse_screen.load_chats()
+
+    def _handle_telegram_video_back(self):
+        """Handle back button from video list."""
+        # If we have an active thread, go back to topic list
+        if hasattr(self, '_active_thread') and self._active_thread:
+            if hasattr(self, '_active_chat') and self._active_chat:
+                self._show_telegram_chat_videos(self._active_chat)
+                return
+
+        # Default: Go back to browse
+        self._show_telegram_browse()
+
+    def _show_telegram_chat_videos(self, chat):
+        """Show videos for selected chat (or topics if forum)."""
+        # Store context
+        self._active_chat = chat
+        self._active_thread = None
+        
+        # Check if chat is a forum
+        is_forum = getattr(chat, 'forum', False)
+        print(f"[MainWindow] Opening chat: {getattr(chat, 'id', 'Unknown')} - Is Forum: {is_forum}")
+        
+        if is_forum:
+             if hasattr(self, '_telegram_topic_list_screen'):
+                 self.stack.setCurrentWidget(self._telegram_topic_list_screen)
+                 self._telegram_topic_list_screen.load_topics(chat)
+        else:
+            if hasattr(self, '_telegram_video_list_screen'):
+                self.stack.setCurrentWidget(self._telegram_video_list_screen)
+                title = getattr(chat, 'title', 'Videos')
+                self._telegram_video_list_screen.load_videos(chat.id, title=title)
+                
+    def _show_telegram_topic_videos(self, chat_id, thread_id):
+        """Show videos for a specific topic."""
+        # Store context (assuming _active_chat is already set from previous step)
+        self._active_thread = thread_id
+        
+        if hasattr(self, '_telegram_video_list_screen'):
+            self.stack.setCurrentWidget(self._telegram_video_list_screen)
+            self._telegram_video_list_screen.load_videos(chat_id, thread_id=thread_id)
+
+    def _play_telegram_video(self, message, chat_id):
+        """Play a video from Telegram."""
+        print(f"[MainWindow] Requesting playback for message {message.id} in chat {chat_id}")
+        
+        from adapters.telegram.async_worker import get_telegram_worker, TelegramOp
+        
+        def on_url_ready(success, result):
+            if success and result:
+                url = result
+                print(f"[MainWindow] Playback URL: {url}")
+                # Play using service
+                # We need to create a Video object or just pass path
+                # service.play_files expects paths.
+                
+                # Remember current screen before switching
+                self._previous_screen = self.stack.currentWidget()
+                
+                self.service.play_files([url])
+                self.stack.setCurrentWidget(self.player_screen)
+            else:
+                 InfoBar.error(
+                    title="Error",
+                    content="No se pudo obtener el enlace de streaming.",
+                    parent=self,
+                    position=InfoBarPosition.TOP
+                )
+
+        worker = get_telegram_worker()
+        worker.execute(
+            TelegramOp.GET_STREAM_URL,
+            on_url_ready,
+            message_id=message.id,
+            chat_id=chat_id
+        )
+
+    def show_previous_screen(self):
+        """Navigate back to the previous screen (used by player)."""
+        if hasattr(self, '_previous_screen') and self._previous_screen:
+            self.stack.setCurrentWidget(self._previous_screen)
+            self._previous_screen = None # Reset
+        else:
+            self.show_home()
+            
+    def _on_telegram_logout(self):
+        """Handle Telegram logout."""
+        from adapters.telegram.async_worker import get_telegram_worker, TelegramOp
+        
+        # Show loading or status
+        InfoBar.info(
+            title="Cerrando sesión...",
+            content="Por favor espera",
+            parent=self,
+            position=InfoBarPosition.TOP
+        )
+        
+        def on_logout_finished(success, result):
+            # Reset UI
+            if self._telegram_login_screen:
+                self._telegram_login_screen.reset()
+            
+            # Navigate to Home
+            self.show_home()
+            
+            InfoBar.success(
+                title="Telegram",
+                content="Sesión cerrada correctamente",
+                parent=self,
+                position=InfoBarPosition.TOP
+            )
+            
+        worker = get_telegram_worker()
+        worker.execute(TelegramOp.LOGOUT, on_logout_finished)
 
     def show_playlist_manager(self):
         self.stack.setCurrentWidget(self.playlist_manager)

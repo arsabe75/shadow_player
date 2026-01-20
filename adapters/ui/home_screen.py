@@ -94,6 +94,7 @@ class HomeScreen(QWidget):
     video_selected = Signal(str)
     files_selected = Signal(list)
     lists_clicked = Signal()
+    telegram_clicked = Signal()  # Navigate to Telegram screen
 
     def __init__(self, persistence, on_engine_change=None):
         super().__init__()
@@ -142,6 +143,12 @@ class HomeScreen(QWidget):
         button_container.setFixedWidth(250)
         
         left_layout.addWidget(button_container, alignment=Qt.AlignCenter)
+
+        # Telegram button
+        self.telegram_button = PushButton("✈️ Telegram")
+        self.telegram_button.setFixedSize(250, 50)
+        self.telegram_button.clicked.connect(self.telegram_clicked.emit)
+        left_layout.addWidget(self.telegram_button, alignment=Qt.AlignCenter)
 
         self.settings_button = PushButton(FluentIcon.SETTING, "Settings")
         self.settings_button.setFixedSize(250, 50)
